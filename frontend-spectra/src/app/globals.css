@@ -1,0 +1,158 @@
+:root {
+  color-scheme: light;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+
+  /* Canvas + surfaces */
+  --color-canvas: #f4f2ee;
+  --color-surface: #ffffff;
+  --color-surface-alt: #faf9f6;
+  --color-border: #e7e3db;
+  --color-border-strong: #d8d3c8;
+
+  /* Text */
+  --color-text: #191d2b;
+  --color-text-secondary: #5b6272;
+  --color-text-muted: #8b91a0;
+  --color-on-accent: #ffffff;
+
+  /* Sidebar (navy) */
+  --color-navy: #10193a;
+  --color-navy-elevated: #16204a;
+  --color-navy-border: #26305c;
+  --color-navy-text: #cfd6ee;
+  --color-navy-text-muted: #8892b8;
+  --color-navy-active: #1f2a5c;
+
+  /* Brand / accent */
+  --color-accent: #1e3a8a;
+  --color-accent-hover: #16306e;
+  --color-accent-soft: #e8ecfa;
+  --color-accent-strong: #14245c;
+
+  /* Status */
+  --color-success: #157a4a;
+  --color-success-soft: #e2f4ea;
+  --color-warning: #a9660a;
+  --color-warning-soft: #faf0d9;
+  --color-danger: #bb2f2b;
+  --color-danger-soft: #fbe8e6;
+  --color-info: #2563a6;
+  --color-info-soft: #e3eefb;
+  --color-neutral-soft: #eceae4;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(23, 25, 39, 0.05), 0 1px 1px rgba(23, 25, 39, 0.04);
+  --shadow-md: 0 6px 16px rgba(23, 25, 39, 0.08);
+  --shadow-lg: 0 16px 32px rgba(23, 25, 39, 0.14);
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  /* Motion */
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms ease;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-canvas: #0a0d16;
+  --color-surface: #131826;
+  --color-surface-alt: #171d2d;
+  --color-border: #262d40;
+  --color-border-strong: #333c56;
+
+  --color-text: #e9ebf3;
+  --color-text-secondary: #a2a9bd;
+  --color-text-muted: #767f97;
+
+  --color-navy: #070b18;
+  --color-navy-elevated: #0d1226;
+  --color-navy-border: #1c2440;
+  --color-navy-text: #c9d0e8;
+  --color-navy-text-muted: #7883a8;
+  --color-navy-active: #1a2246;
+
+  --color-accent: #4c6fe0;
+  --color-accent-hover: #6483ea;
+  --color-accent-soft: rgba(76, 111, 224, 0.16);
+  --color-accent-strong: #d7e0ff;
+
+  --color-success: #3fbd82;
+  --color-success-soft: rgba(63, 189, 130, 0.14);
+  --color-warning: #e0a53d;
+  --color-warning-soft: rgba(224, 165, 61, 0.14);
+  --color-danger: #f0685f;
+  --color-danger-soft: rgba(240, 104, 95, 0.14);
+  --color-info: #5b9fe0;
+  --color-info-soft: rgba(91, 159, 224, 0.14);
+  --color-neutral-soft: #1d2334;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-text);
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+svg {
+  display: block;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

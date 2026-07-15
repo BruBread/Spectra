@@ -1,0 +1,105 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profileHeader {
+  margin-bottom: 16px;
+}
+
+.actionsRow {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.toggleVisibility {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.toggleVisibility:hover {
+  color: var(--color-text);
+}
+
+.helperText {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-top: 8px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 16px 0;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.themeOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.themeOption:hover {
+  background: var(--color-surface-alt);
+}
+
+.themeOptionSelected {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.systemGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+
+.systemGrid dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+  margin-bottom: 3px;
+}
+
+.systemGrid dd {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+@media (max-width: 560px) {
+  .fieldRow,
+  .themeGrid,
+  .systemGrid {
+    grid-template-columns: 1fr;
+  }
+}

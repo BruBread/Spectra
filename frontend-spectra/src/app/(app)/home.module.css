@@ -1,0 +1,50 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.greeting {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.subGreeting {
+  margin-top: 4px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.chartCard {
+  min-width: 0;
+}
+
+@media (max-width: 1080px) {
+  .statGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .statGrid {
+    grid-template-columns: 1fr;
+  }
+}

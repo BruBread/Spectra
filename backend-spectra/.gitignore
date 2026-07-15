@@ -1,0 +1,20 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# environment variables (real values — never commit)
+.env
+.env.local
+.env.development
+.env.production
+
+# logs
+*.log
+npm-debug.log*
+
+# misc
+.DS_Store
+coverage/
+*.tsbuildinfo

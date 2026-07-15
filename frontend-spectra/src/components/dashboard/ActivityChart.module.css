@@ -1,0 +1,50 @@
+.wrapper {
+  width: 100%;
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.line {
+  stroke: var(--color-accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.point {
+  fill: var(--color-surface);
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  transition: r var(--transition-fast);
+}
+
+.axisLabel {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+.hoverLine {
+  stroke: var(--color-border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.tooltip {
+  background: var(--color-navy);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}

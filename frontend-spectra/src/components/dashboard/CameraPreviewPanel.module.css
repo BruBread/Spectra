@@ -1,0 +1,36 @@
+.select {
+  min-width: 160px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.lastActivity {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
