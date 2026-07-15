@@ -1,25 +1,5 @@
 export type Severity = 'info' | 'warning' | 'critical';
 
-export type CameraStatus = 'live' | 'offline' | 'idle';
-
-export interface Camera {
-  id: string;
-  name: string;
-  location: string;
-  zone: string;
-  status: CameraStatus;
-  lastActivity: string;
-  addedAt: string;
-  paletteIndex: number;
-}
-
-export interface NewCameraInput {
-  name: string;
-  location: string;
-  zone: string;
-  status: CameraStatus;
-}
-
 export type CustomerStatus = 'active' | 'inactive' | 'pending';
 
 export interface Customer {

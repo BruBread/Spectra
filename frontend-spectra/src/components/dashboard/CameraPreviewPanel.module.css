@@ -29,8 +29,3 @@
   font-size: 0.75rem;
   color: var(--color-text-secondary);
 }
-
-.lastActivity {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-}

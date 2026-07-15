@@ -1,4 +1,3 @@
-export { generateCameras } from './cameras';
 export { generateCustomers } from './customers';
 export { generateLogs } from './logs';
 export { generateNotifications } from './notifications';

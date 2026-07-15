@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Camera, Home, LogOut, ScrollText, Settings, Users, X } from 'lucide-react';
+import { Camera, Home, LogOut, ScrollText, Settings, Users, Video, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/format';
 import { SpectraLogo } from '../ui/SpectraLogo';
@@ -12,6 +12,7 @@ import styles from './Sidebar.module.css';
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/cameras', label: 'Cameras', icon: Camera },
+  { href: '/monitor', label: 'Live Monitor', icon: Video },
   { href: '/logs', label: 'Logs', icon: ScrollText },
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },

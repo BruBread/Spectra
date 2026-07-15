@@ -1,37 +1,51 @@
-import { MapPin, MoreVertical, Trash2, Eye } from 'lucide-react';
-import type { Camera } from '../../lib/types';
+'use client';
+
+import Link from 'next/link';
+import { MapPin, MoreVertical, Trash2, Eye, Radio, ExternalLink } from 'lucide-react';
+import type { CameraRecord } from '../../lib/cameras/types';
+import { CAMERA_SOURCE_LABELS, supportsDetection } from '../../lib/cameras/types';
+import type { PipelineAlert } from '../../lib/vision/pipeline';
 import { Card } from '../ui/Card';
-import { Badge } from '../ui/Badge';
 import { Dropdown, DropdownItem } from '../ui/Dropdown';
 import { IconButton } from '../ui/IconButton';
-import { CameraVisual } from './CameraVisual';
+import { CameraTile } from './CameraTile';
 import styles from './CameraCard.module.css';
 
 interface CameraCardProps {
-  camera: Camera;
+  camera: CameraRecord;
   onView: () => void;
   onRemove: () => void;
+  onToggleDetection: (enabled: boolean) => void;
+  onAlert?: (alert: PipelineAlert) => void;
 }
 
-const STATUS_LABEL: Record<Camera['status'], string> = {
-  live: 'Live',
-  offline: 'Offline',
-  idle: 'Idle',
-};
+export function CameraCard({ camera, onView, onRemove, onToggleDetection, onAlert }: CameraCardProps) {
+  const detectionCapable = supportsDetection(camera.sourceType);
 
-export function CameraCard({ camera, onView, onRemove }: CameraCardProps) {
   return (
     <Card padding="sm" className={styles.card}>
-      <button type="button" className={styles.previewButton} onClick={onView}>
-        <CameraVisual paletteIndex={camera.paletteIndex} status={camera.status} />
-      </button>
+      {/* Not a <button>: CameraTile renders its own interactive Start/Retry buttons, and buttons can't nest. */}
+      <div
+        role="button"
+        tabIndex={0}
+        className={styles.previewButton}
+        onClick={onView}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onView();
+          }
+        }}
+      >
+        <CameraTile camera={camera} onAlert={onAlert} />
+      </div>
 
       <div className={styles.body}>
         <div className={styles.titleRow}>
           <div className={styles.titles}>
             <p className={styles.name}>{camera.name}</p>
             <p className={styles.location}>
-              <MapPin size={12} aria-hidden="true" /> {camera.location}
+              <MapPin size={12} aria-hidden="true" /> {camera.location || CAMERA_SOURCE_LABELS[camera.sourceType]}
             </p>
           </div>
           <Dropdown
@@ -52,6 +66,16 @@ export function CameraCard({ camera, onView, onRemove }: CameraCardProps) {
                 >
                   <Eye size={15} aria-hidden="true" /> View details
                 </DropdownItem>
+                {detectionCapable ? (
+                  <DropdownItem
+                    onClick={() => {
+                      close();
+                      onToggleDetection(!camera.detectionEnabled);
+                    }}
+                  >
+                    <Radio size={15} aria-hidden="true" /> {camera.detectionEnabled ? 'Disable' : 'Enable'} AI detection
+                  </DropdownItem>
+                ) : null}
                 <DropdownItem
                   danger
                   onClick={() => {
@@ -67,10 +91,12 @@ export function CameraCard({ camera, onView, onRemove }: CameraCardProps) {
         </div>
 
         <div className={styles.metaRow}>
-          <Badge tone={camera.status === 'live' ? 'success' : camera.status === 'offline' ? 'danger' : 'neutral'} dot>
-            {STATUS_LABEL[camera.status]}
-          </Badge>
-          <span className={styles.lastActivity}>{camera.lastActivity}</span>
+          <span className={styles.sourceType}>{CAMERA_SOURCE_LABELS[camera.sourceType]}</span>
+          {detectionCapable && camera.detectionEnabled ? (
+            <Link href={`/monitor?camera=${camera.id}`} className={styles.monitorLink}>
+              <ExternalLink size={12} aria-hidden="true" /> Live Monitor
+            </Link>
+          ) : null}
         </div>
       </div>
     </Card>

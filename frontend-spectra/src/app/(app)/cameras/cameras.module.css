@@ -24,8 +24,17 @@
   color: var(--color-text-secondary);
 }
 
+.banner {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
 }

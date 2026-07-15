@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { AppDataProvider } from '../../context/AppDataContext';
+import { CameraSourcesProvider } from '../../context/CameraSourcesContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Topbar } from '../../components/layout/Topbar';
 import { FullPageLoader } from '../../components/ui/FullPageLoader';
@@ -26,13 +27,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <AppDataProvider>
-      <div className={styles.shell}>
-        <Sidebar mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
-        <div className={styles.main}>
-          <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
-          <main className={styles.content}>{children}</main>
+      <CameraSourcesProvider>
+        <div className={styles.shell}>
+          <Sidebar mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
+          <div className={styles.main}>
+            <Topbar onOpenMobileNav={() => setMobileNavOpen(true)} />
+            <main className={styles.content}>{children}</main>
+          </div>
         </div>
-      </div>
+      </CameraSourcesProvider>
     </AppDataProvider>
   );
 }

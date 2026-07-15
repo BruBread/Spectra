@@ -64,10 +64,25 @@
   gap: 8px;
 }
 
-.lastActivity {
+.sourceType {
   font-size: 0.75rem;
   color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.monitorLink {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.monitorLink:hover {
+  text-decoration: underline;
 }

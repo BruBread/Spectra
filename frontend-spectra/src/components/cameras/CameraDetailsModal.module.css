@@ -22,6 +22,7 @@
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text);
+  overflow-wrap: anywhere;
 }
 
 .withIcon {
@@ -34,52 +35,23 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.related {
+.detectionRow {
+  border-top: 1px solid var(--color-border);
+  padding-top: 4px;
+}
+
+.noDetectionNote {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
   border-top: 1px solid var(--color-border);
   padding-top: 14px;
 }
 
-.relatedTitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--color-text);
-  margin-bottom: 8px;
-}
-
-.emptyRelated {
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
-}
-
-.relatedList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.relatedItem {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
-}
-
-.relatedTime {
-  flex-shrink: 0;
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
 .footerActions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
   border-top: 1px solid var(--color-border);
   padding-top: 14px;
 }

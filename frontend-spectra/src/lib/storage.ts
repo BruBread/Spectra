@@ -30,7 +30,6 @@ export const STORAGE_KEYS = {
   auth: 'spectra-auth',
   demoPassword: 'spectra-demo-password',
   theme: 'spectra-theme',
-  cameras: 'spectra-cameras',
   customers: 'spectra-customers',
   logs: 'spectra-logs',
   notifications: 'spectra-notifications',

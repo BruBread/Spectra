@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { AlarmClock, Camera as CameraIcon, ScrollText, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useAppData } from '../../context/AppDataContext';
+import { useCameraSources } from '../../context/CameraSourcesContext';
 import { StatCard } from '../../components/dashboard/StatCard';
 import { ActivityChart } from '../../components/dashboard/ActivityChart';
 import { RecentLogsPanel } from '../../components/dashboard/RecentLogsPanel';
@@ -26,7 +27,8 @@ const GREETING_DATE = new Intl.DateTimeFormat('en-US', {
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { cameras, logs, customers, notifications } = useAppData();
+  const { logs, customers, notifications } = useAppData();
+  const { cameras } = useCameraSources();
 
   const activity = useMemo(() => generateWeeklyActivity(), []);
 
@@ -43,7 +45,7 @@ export default function HomePage() {
       (log) => log.severity !== 'info' && isSameUtcDay(log.timestamp, yesterdayAnchor),
     ).length;
 
-    const activeCameras = cameras.filter((camera) => camera.status === 'live').length;
+    const activeCameras = cameras.filter((camera) => camera.detectionEnabled).length;
 
     const newCustomers = customers.filter((customer) => daysSince(customer.joinedOn, MOCK_ANCHOR) <= 7).length;
     const newCustomersPrevWeek = customers.filter((customer) => {
@@ -86,7 +88,7 @@ export default function HomePage() {
           trend={{ value: stats.logsTrend, direction: stats.logsPositive ? 'up' : 'down', positive: stats.logsPositive }}
         />
         <StatCard
-          label="Active Cameras"
+          label="Monitored Cameras"
           value={String(stats.activeCameras)}
           icon={<CameraIcon size={17} aria-hidden="true" />}
         />

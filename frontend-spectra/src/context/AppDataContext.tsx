@@ -3,26 +3,17 @@
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { createPersistedStore } from '../lib/store';
 import { STORAGE_KEYS } from '../lib/storage';
-import {
-  generateCameras,
-  generateCustomers,
-  generateLogs,
-  generateNotifications,
-  defaultSettings,
-} from '../lib/mock';
+import { generateCustomers, generateLogs, generateNotifications, defaultSettings } from '../lib/mock';
 import type {
   AppSettings,
-  Camera,
   Customer,
   CustomerStatus,
   LogEntry,
-  NewCameraInput,
   NewCustomerInput,
   NotificationItem,
   Severity,
 } from '../lib/types';
 
-const camerasStore = createPersistedStore<Camera[]>(STORAGE_KEYS.cameras, () => generateCameras());
 const customersStore = createPersistedStore<Customer[]>(STORAGE_KEYS.customers, () => generateCustomers());
 const logsStore = createPersistedStore<LogEntry[]>(STORAGE_KEYS.logs, () => generateLogs());
 const notificationsStore = createPersistedStore<NotificationItem[]>(STORAGE_KEYS.notifications, () =>
@@ -31,10 +22,6 @@ const notificationsStore = createPersistedStore<NotificationItem[]>(STORAGE_KEYS
 const settingsStore = createPersistedStore<AppSettings>(STORAGE_KEYS.settings, defaultSettings);
 
 interface AppDataContextValue {
-  cameras: Camera[];
-  addCamera: (input: NewCameraInput) => void;
-  removeCamera: (id: string) => void;
-
   customers: Customer[];
   addCustomer: (input: NewCustomerInput) => void;
   setCustomerStatus: (id: string, status: CustomerStatus) => void;
@@ -63,7 +50,6 @@ function addLogEntry(entry: { user: string; action: string; details: string; sev
 }
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
-  const cameras = useSyncExternalStore(camerasStore.subscribe, camerasStore.getSnapshot, camerasStore.getServerSnapshot);
   const customers = useSyncExternalStore(
     customersStore.subscribe,
     customersStore.getSnapshot,
@@ -83,37 +69,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppDataContextValue>(
     () => ({
-      cameras,
-      addCamera: (input) => {
-        camerasStore.set((current) => {
-          const nextIndex = current.length + 1;
-          const newCamera: Camera = {
-            id: `CAM-${String(nextIndex).padStart(2, '0')}`,
-            name: input.name,
-            location: input.location,
-            zone: input.zone,
-            status: input.status,
-            lastActivity: 'Just added',
-            addedAt: new Date().toISOString(),
-            paletteIndex: nextIndex % 6,
-          };
-          return [newCamera, ...current];
-        });
-        addLogEntry({
-          user: 'Admin',
-          action: 'Camera Added',
-          details: `${input.name} camera added at ${input.location}`,
-          severity: 'info',
-        });
-      },
-      removeCamera: (id) => {
-        const camera = camerasStore.getSnapshot().find((cam) => cam.id === id);
-        camerasStore.set((current) => current.filter((cam) => cam.id !== id));
-        if (camera) {
-          addLogEntry({ user: 'Admin', action: 'Camera Removed', details: `${camera.name} camera removed`, severity: 'warning' });
-        }
-      },
-
       customers,
       addCustomer: (input) => {
         customersStore.set((current) => {
@@ -167,14 +122,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       },
 
       resetDemoData: () => {
-        camerasStore.set(generateCameras());
         customersStore.set(generateCustomers());
         logsStore.set(generateLogs());
         notificationsStore.set(generateNotifications());
         settingsStore.set(defaultSettings());
       },
     }),
-    [cameras, customers, logs, notifications, settings],
+    [customers, logs, notifications, settings],
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
