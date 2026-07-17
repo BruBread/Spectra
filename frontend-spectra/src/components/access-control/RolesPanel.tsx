@@ -5,7 +5,7 @@ import { Loader2, PlugZap, Plus, ShieldAlert, ShieldQuestion } from 'lucide-reac
 import { useCameraSources } from '../../context/CameraSourcesContext';
 import { useToast } from '../../context/ToastContext';
 import type { LoadState } from '../../lib/accessControl/loadState';
-import type { AccessRole, RestrictedZone } from '../../lib/accessControl/types';
+import type { AccessRole, ActionRule, RestrictedZone } from '../../lib/accessControl/types';
 import { deleteRole, updateRole, updateRoleZonePermissions } from '../../lib/api/accessControl';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -36,19 +36,22 @@ export function RolesPanel({ roles, zones, canEdit, onRolesChanged }: RolesPanel
    * exists as though it didn't.
    */
   const zonesFor = (role: AccessRole) =>
-    zones.data.filter(
-      (zone) => zone.active || role.permissions.zones.some((entry) => entry.zoneId === zone.id && entry.allowed),
-    );
+    zones.data.filter((zone) => zone.active || isAllowed(role, zone.id));
 
   const isAllowed = (role: AccessRole, zoneId: string) =>
-    role.permissions.zones.some((entry) => entry.zoneId === zoneId && entry.allowed);
+    role.permissions.actions.some(
+      (entry) => entry.action === 'restricted_area' && entry.zoneId === zoneId && entry.rule === 'allow',
+    );
 
   const handleToggleZone = async (role: AccessRole, zoneId: string, allowed: boolean) => {
-    // Only allowed entries are stored: the backend treats an absent zone as
-    // denied, so an explicit `allowed: false` row would mean exactly the same
-    // thing while implying a distinction that isn't there.
-    const next = role.permissions.zones.filter((entry) => entry.zoneId !== zoneId && entry.allowed);
-    if (allowed) next.push({ zoneId, allowed: true });
+    // Only `allow` rules are written from this checkbox. An unticked zone is
+    // left unwritten rather than stored as an explicit `restrict`: both deny,
+    // and this two-state control cannot express the difference between "denied"
+    // and "somebody considered it and denied it".
+    const next: ActionRule[] = role.permissions.actions.filter(
+      (entry) => entry.action === 'restricted_area' && entry.zoneId !== zoneId && entry.rule === 'allow',
+    );
+    if (allowed) next.push({ action: 'restricted_area', zoneId, rule: 'allow' });
 
     setBusyId(role.id);
     const result = await updateRoleZonePermissions(role, next);
@@ -151,12 +154,17 @@ export function RolesPanel({ roles, zones, canEdit, onRolesChanged }: RolesPanel
                       <span className={styles.cardTitle}>{role.name}</span>
                       <span className={styles.mono}>{role.key}</span>
                       <Badge tone={role.active ? 'success' : 'neutral'}>{role.active ? 'Active' : 'Deactivated'}</Badge>
-                      {/* No control for this — nothing enforces it yet. It is
-                          still shown when set, because hiding a permission
-                          that exists is worse than showing one that is inert. */}
-                      {role.permissions.weaponExempt ? (
-                        <Badge tone="warning">Weapon exemption set — not enforced</Badge>
-                      ) : null}
+                      {/* No control for these — the catalog marks them
+                          unconfigurable. They are still shown when set, because
+                          hiding a permission that exists is worse than showing
+                          one that is inert. */}
+                      {role.permissions.actions
+                        .filter((rule) => rule.action !== 'restricted_area' && rule.rule === 'allow')
+                        .map((rule) => (
+                          <Badge key={rule.action} tone="warning">
+                            {rule.action} allowed — not enforced
+                          </Badge>
+                        ))}
                     </div>
                     {role.description ? <p className={styles.cardDescription}>{role.description}</p> : null}
                   </div>

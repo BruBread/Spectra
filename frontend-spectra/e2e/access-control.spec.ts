@@ -94,13 +94,13 @@ test.describe('access control: navigation and roles', () => {
 
     const role = await roleByKey(api, 'contractor');
     const detail = await (await api.get(`/api/roles/${role._id}`)).json();
-    expect(detail.permissions.zones).toHaveLength(1);
-    expect(detail.permissions.zones[0].allowed).toBe(true);
+    expect(detail.permissions.actions).toHaveLength(1);
+    expect(detail.permissions.actions[0]).toMatchObject({ action: 'restricted_area', rule: 'allow' });
 
     // The other roles must not have been granted anything by association.
     const staff = await roleByKey(api, 'staff');
     const staffDetail = await (await api.get(`/api/roles/${staff._id}`)).json();
-    expect(staffDetail.permissions.zones).toHaveLength(0);
+    expect(staffDetail.permissions.actions).toHaveLength(0);
   });
 
   test('refuses to delete a role that people still hold, and says why', async ({ page }) => {
@@ -256,9 +256,10 @@ test.describe('access control: restricted zones', () => {
     const cameraId = await seedCamera(api);
     const zone = await seedZone(api, { name: 'E2E Pool Deck', cameraId });
     const guard = await roleByKey(api, 'security_guard');
-    await api.patch(`/api/roles/${guard._id}`, {
-      data: { permissions: { weaponExempt: false, zones: [{ zoneId: zone._id, allowed: true }] } },
+    const granted = await api.patch(`/api/roles/${guard._id}`, {
+      data: { permissions: { actions: [{ action: 'restricted_area', zoneId: zone._id, rule: 'allow' }] } },
     });
+    expect(granted.ok()).toBe(true);
 
     await loginViaUi(page);
     await goTo(page, 'zones');

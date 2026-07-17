@@ -1,5 +1,7 @@
 import { Schema, model } from 'mongoose';
-import { ALERT_SEVERITIES, ALERT_STATUSES, ALL_DETECTION_TYPES, DETECTION_TYPES } from './vision.types.js';
+import { ALERT_SEVERITIES, ALERT_STATUSES, ALL_DETECTION_TYPES, DETECTOR_CONFIG_TYPES } from './vision.types.js';
+import { RULE_SOURCES } from '../policy/action.catalog.js';
+import { POLICY_SUBJECTS, UNIDENTIFIED_REASONS } from '../policy/policy.types.js';
 
 const zoneSchema = new Schema(
   {
@@ -13,7 +15,9 @@ const zoneSchema = new Schema(
 
 const detectionTypeConfigSchema = new Schema(
   {
-    type: { type: String, enum: DETECTION_TYPES, required: true },
+    // Silent capabilities are configurable too — AprilTag decode strictness
+    // is tuned here even though it never produces an alert.
+    type: { type: String, enum: DETECTOR_CONFIG_TYPES, required: true },
     enabled: { type: Boolean, required: true, default: true },
     confidenceThreshold: { type: Number, required: true, min: 0, max: 1 },
     cooldownSeconds: { type: Number, required: true, min: 0 },
@@ -36,26 +40,36 @@ const visionSettingsSchema = new Schema(
 
 export const VisionSettings = model('VisionSettings', visionSettingsSchema);
 
-const aprilTagMappingSchema = new Schema(
+/**
+ * Why a policy engine let this alert exist, filled in by restricted-area
+ * enforcement in a later phase.
+ *
+ * Null on every alert today, and on anything a browser pipeline posts
+ * directly: those were never evaluated, and claiming otherwise would put a
+ * provenance on them that nobody established.
+ */
+const alertPolicySchema = new Schema(
   {
-    tagId: { type: Number, required: true, unique: true, index: true },
-    label: { type: String, required: true },
-    loraDeviceId: { type: String, required: true },
-    notes: { type: String },
-    createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
-    updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    decisionId: { type: Schema.Types.ObjectId, ref: 'PolicyDecision', default: null },
+    subject: { type: String, enum: POLICY_SUBJECTS, required: true },
+    /** `unidentified_policy` here is what tells a reviewer the no-credential policy applied. */
+    ruleSource: { type: String, enum: RULE_SOURCES, required: true },
+    unidentifiedReason: { type: String, enum: [...UNIDENTIFIED_REASONS, null], default: null },
+    personId: { type: Schema.Types.ObjectId, ref: 'Person', default: null },
+    personName: { type: String, default: null },
+    roleKey: { type: String, default: null },
+    aprilTagId: { type: Number, default: null },
+    zoneId: { type: Schema.Types.ObjectId, ref: 'Zone', default: null },
   },
-  { timestamps: true },
+  { _id: false },
 );
-
-export const AprilTagMapping = model('AprilTagMapping', aprilTagMappingSchema);
 
 const visionAlertSchema = new Schema(
   {
     cameraId: { type: String, required: true, index: true },
-    // Accepts retired types too, so alerts recorded before those detectors
-    // were removed stay valid documents. Creation is restricted to active
-    // types by the controller.
+    // Accepts retired types, and `apriltag` from before it became a silent
+    // identity credential, so alerts recorded then stay valid documents.
+    // Creation is restricted to alerting types by the controller.
     type: { type: String, enum: ALL_DETECTION_TYPES, required: true, index: true },
     severity: { type: String, enum: ALERT_SEVERITIES, required: true, default: 'warning' },
     status: { type: String, enum: ALERT_STATUSES, required: true, default: 'new' },
@@ -73,6 +87,8 @@ const visionAlertSchema = new Schema(
     /** Who triaged this alert, and when. Detections themselves are machine-created. */
     statusChangedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     statusChangedAt: { type: Date, default: null },
+    /** Schema only in this phase — nothing writes it until enforcement ships. */
+    policy: { type: alertPolicySchema, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import * as policyService from './policy.service.js';
-import { IDENTITY_STATES, POLICY_DECISION_OUTCOMES } from '../identity/identity.types.js';
-import { ALL_DETECTION_TYPES } from '../vision/vision.types.js';
+import { POLICY_DECISION_OUTCOMES, POLICY_SUBJECTS, UNIDENTIFIED_REASONS } from './policy.types.js';
+import { ACTION_KEYS, POLICY_RULES, RULE_SOURCES } from './action.catalog.js';
 
 function isObjectId(value: unknown): value is string {
   return typeof value === 'string' && mongoose.isValidObjectId(value);
@@ -31,14 +31,29 @@ function isError(value: unknown): value is { error: string } {
 
 export async function listPolicyDecisions(req: Request, res: Response, next: NextFunction) {
   try {
-    const detectionType = parseEnumFilter(req.query.detectionType, ALL_DETECTION_TYPES, 'detectionType');
-    if (isError(detectionType)) {
-      res.status(400).json(detectionType);
+    const action = parseEnumFilter(req.query.action, ACTION_KEYS, 'action');
+    if (isError(action)) {
+      res.status(400).json(action);
       return;
     }
-    const identityState = parseEnumFilter(req.query.identityState, IDENTITY_STATES, 'identityState');
-    if (isError(identityState)) {
-      res.status(400).json(identityState);
+    const subject = parseEnumFilter(req.query.subject, POLICY_SUBJECTS, 'subject');
+    if (isError(subject)) {
+      res.status(400).json(subject);
+      return;
+    }
+    const unidentifiedReason = parseEnumFilter(req.query.unidentifiedReason, UNIDENTIFIED_REASONS, 'unidentifiedReason');
+    if (isError(unidentifiedReason)) {
+      res.status(400).json(unidentifiedReason);
+      return;
+    }
+    const ruleSource = parseEnumFilter(req.query.ruleSource, RULE_SOURCES, 'ruleSource');
+    if (isError(ruleSource)) {
+      res.status(400).json(ruleSource);
+      return;
+    }
+    const ruleApplied = parseEnumFilter(req.query.ruleApplied, POLICY_RULES, 'ruleApplied');
+    if (isError(ruleApplied)) {
+      res.status(400).json(ruleApplied);
       return;
     }
     const decision = parseEnumFilter(req.query.decision, POLICY_DECISION_OUTCOMES, 'decision');
@@ -66,8 +81,11 @@ export async function listPolicyDecisions(req: Request, res: Response, next: Nex
     }
 
     const decisions = await policyService.listPolicyDecisions({
-      detectionType,
-      identityState,
+      action,
+      subject,
+      unidentifiedReason,
+      ruleSource,
+      ruleApplied,
       decision,
       from,
       to,

@@ -1,4 +1,4 @@
-import type { DetectionRequirement, DetectionType, DetectionTypeConfig, VisionSettings, Zone } from './types';
+import type { DetectionRequirement, DetectionType, DetectorConfigType, DetectionTypeConfig, VisionSettings, Zone } from './types';
 import { DETECTION_REQUIREMENTS } from './types';
 import { loadObjectModel, detectObjects, type DetectedObjectBox } from './models/objectModel';
 import {
@@ -25,7 +25,7 @@ export interface VisionTickResult {
   aprilTagScale: number;
   videoWidth: number;
   videoHeight: number;
-  activeZones: Array<{ type: DetectionType; zone: Zone }>;
+  activeZones: Array<{ type: DetectorConfigType; zone: Zone }>;
   candidates: DetectionCandidate[];
 }
 
@@ -109,7 +109,7 @@ export class VisionPipeline {
     return set;
   }
 
-  private configFor(type: DetectionType): DetectionTypeConfig | undefined {
+  private configFor(type: DetectorConfigType): DetectionTypeConfig | undefined {
     return this.settings.detectors.find((detector) => detector.type === type);
   }
 

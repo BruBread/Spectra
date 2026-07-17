@@ -1,5 +1,7 @@
 import type {
   AccessRole,
+  ActionKey,
+  ActionRule,
   IdentityState,
   LoraDevice,
   Person,
@@ -30,13 +32,16 @@ function optionalNumber(value: unknown): number | null {
 /* ---------------------------------- roles ---------------------------------- */
 
 function normalizePermissions(raw: unknown): RolePermissions {
-  const permissions = (raw ?? {}) as { weaponExempt?: unknown; zones?: unknown };
-  const zones = Array.isArray(permissions.zones) ? permissions.zones : [];
+  const permissions = (raw ?? {}) as { actions?: unknown };
+  const actions = Array.isArray(permissions.actions) ? permissions.actions : [];
   return {
-    weaponExempt: Boolean(permissions.weaponExempt),
-    zones: zones.map((entry) => {
-      const zone = entry as { zoneId?: unknown; allowed?: unknown };
-      return { zoneId: String(zone.zoneId), allowed: Boolean(zone.allowed) };
+    actions: actions.map((entry) => {
+      const rule = entry as { action?: unknown; zoneId?: unknown; rule?: unknown };
+      return {
+        action: String(rule.action) as ActionKey,
+        zoneId: rule.zoneId ? String(rule.zoneId) : null,
+        rule: rule.rule === 'allow' ? 'allow' : 'restrict',
+      };
     }),
   };
 }
@@ -79,8 +84,9 @@ export async function createRole(input: NewRoleInput): Promise<ApiResult<AccessR
  * `key` is intentionally absent: the backend rejects any attempt to change it,
  * because recorded policy decisions refer to a role by key.
  *
- * When `permissions` is sent it replaces the stored object wholesale, so
- * callers must pass a complete one — see updateRoleZonePermissions.
+ * When `permissions` is sent it replaces the stored rule set wholesale, so
+ * callers must pass every rule the role should keep — see
+ * updateRoleZonePermissions.
  */
 export async function updateRole(
   roleId: string,
@@ -92,16 +98,17 @@ export async function updateRole(
 }
 
 /**
- * Changes only the zone permissions, carrying the role's current
- * `weaponExempt` through untouched.
+ * Changes only the role's restricted-area rules, carrying every other rule
+ * through untouched.
  *
- * The backend replaces `permissions` as a whole and defaults a missing
- * `weaponExempt` to false, so sending zones alone would silently clear an
- * exemption. This UI shows no exemption control, which makes quietly resetting
- * one especially unacceptable — it would be an invisible change.
+ * The backend replaces the rule set as a whole, so anything not sent is
+ * dropped. Rules for actions this UI has no control for — a `possible_weapon`
+ * exemption carried over by the migration, say — must survive an unrelated
+ * zone edit rather than vanish invisibly.
  */
-export function updateRoleZonePermissions(role: AccessRole, zones: RolePermissions['zones']): Promise<ApiResult<AccessRole>> {
-  return updateRole(role.id, { permissions: { weaponExempt: role.permissions.weaponExempt, zones } });
+export function updateRoleZonePermissions(role: AccessRole, zoneRules: ActionRule[]): Promise<ApiResult<AccessRole>> {
+  const others = role.permissions.actions.filter((rule) => rule.action !== 'restricted_area');
+  return updateRole(role.id, { permissions: { actions: [...others, ...zoneRules] } });
 }
 
 /** Refused with 409 while any person or recorded decision still refers to the role. */

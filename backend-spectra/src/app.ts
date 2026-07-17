@@ -14,6 +14,9 @@ import { camerasRouter } from './modules/cameras/cameras.routes.js';
 import { loraDevicesRouter, peopleRouter, rolesRouter } from './modules/identity/identity.routes.js';
 import { zonesRouter } from './modules/zones/zones.routes.js';
 import { policyDecisionsRouter } from './modules/policy/policy.routes.js';
+import { actionCatalogRouter } from './modules/policy/actionCatalog.routes.js';
+import { unidentifiedPolicyRouter } from './modules/policy/unidentifiedPolicy.routes.js';
+import { requireAuth } from './modules/auth/auth.middleware.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -75,6 +78,10 @@ export function createApp() {
   app.use('/api/lora-devices', loraDevicesRouter);
   app.use('/api/zones', zonesRouter);
   app.use('/api/policy-decisions', policyDecisionsRouter);
+  // The catalog describes the product rather than anyone's permissions, so
+  // the guard is just "signed in".
+  app.use('/api/action-catalog', requireAuth, actionCatalogRouter);
+  app.use('/api/unidentified-policy', unidentifiedPolicyRouter);
 
   app.use(notFound);
   app.use(errorHandler);

@@ -63,25 +63,6 @@
   line-height: 1.4;
 }
 
-.tagLink {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.75rem;
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-.tagDevice {
-  color: var(--color-text-secondary);
-  font-weight: 500;
-}
-
-.tagUnmapped {
-  color: var(--color-warning);
-  font-weight: 500;
-}
-
 .metaRow {
   display: flex;
   align-items: center;

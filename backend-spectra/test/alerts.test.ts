@@ -57,12 +57,38 @@ async function counts() {
   return readJson<{ unread: number; criticalOpen: number; new: number }>(response);
 }
 
+/**
+ * Writes an alert of a type the API will no longer create.
+ *
+ * Recorded history exists for types that have since been retired or gone
+ * silent, and it must stay readable — the only way to set that up now is to
+ * insert it directly, which is exactly the point.
+ */
+async function insertLegacyAlert(type: string, cameraId = TEST_CAMERA_ID) {
+  const mongoose = (await import('mongoose')).default;
+  const { insertedId } = await mongoose.connection.collection('visionalerts').insertOne({
+    cameraId,
+    type,
+    severity: 'warning',
+    status: 'new',
+    read: false,
+    zoneName: null,
+    confidence: 0.9,
+    message: `Legacy ${type} fixture`,
+    snapshot: null,
+    metadata: {},
+    occurrences: 1,
+    lastOccurredAt: new Date(),
+    acknowledged: false,
+    policy: null,
+    createdAt: new Date(),
+  });
+  return String(insertedId);
+}
+
 describe('alert creation and severity defaults', () => {
   it('defaults severity from the detection type', async () => {
-    const cases: Array<[string, string]> = [
-      ['unattended_object', 'warning'],
-      ['apriltag', 'info'],
-    ];
+    const cases: Array<[string, string]> = [['unattended_object', 'warning']];
 
     // No reset between cases: grouping keys on camera + type + trackId, so
     // different types never fold together. (Resetting here would also wipe the
@@ -107,6 +133,21 @@ describe('alert creation and severity defaults', () => {
     assert.equal(response.status, 400);
     const body = await readJson<{ error: string }>(response);
     assert.match(body.error, /retired/i);
+  });
+
+  it('refuses to record an AprilTag alert, because a tag is a credential and not an incident', async () => {
+    const response = await fetch(`${server.baseUrl}/api/vision/alerts`, {
+      method: 'POST',
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ cameraId: TEST_CAMERA_ID, type: 'apriltag', confidence: 0.95, message: 'AprilTag 7 detected' }),
+    });
+    // Alerting on a tag put a person's identity into the feed every time they
+    // walked past a camera. Decoding continues; the notification does not.
+    assert.equal(response.status, 400);
+    const body = await readJson<{ error: string }>(response);
+    assert.match(body.error, /silent identity capability/i);
+
+    assert.equal((await listAlerts('?type=apriltag&limit=50')).alerts.length, 0, 'nothing was recorded');
   });
 });
 
@@ -328,7 +369,7 @@ describe('counts', () => {
     assert.deepEqual(await counts(), { unread: 0, criticalOpen: 0, new: 0 });
 
     await createAlert(alertBody({ severity: 'critical', metadata: { trackId: 1 } }));
-    await createAlert(alertBody({ type: 'apriltag', severity: 'critical', metadata: { trackId: 2 } }));
+    await createAlert(alertBody({ severity: 'critical', metadata: { trackId: 2 } }));
     await createAlert(alertBody({ metadata: { trackId: 3 } }));
 
     assert.deepEqual(await counts(), { unread: 3, criticalOpen: 2, new: 3 });
@@ -368,14 +409,17 @@ describe('filtering', () => {
     await createAlert(
       alertBody({ type: 'unattended_object', severity: 'critical', cameraId: TEST_CAMERA_ID, zoneName: 'Test Zone 1', metadata: { trackId: 1 } }),
     );
-    await createAlert(alertBody({ type: 'apriltag', severity: 'warning', cameraId: TEST_CAMERA_ID, metadata: { trackId: 2 } }));
+    // Inserted rather than posted: `apriltag` is a silent identity capability
+    // now and the API refuses to create one. A recorded alert from before that
+    // still has to be listable and filterable, which is what this covers.
+    await insertLegacyAlert('apriltag', TEST_CAMERA_ID);
     await createAlert(alertBody({ type: 'unattended_object', cameraId: TEST_CAMERA_ID_B, metadata: { trackId: 3 } }));
   });
 
   it('filters by severity, type, camera and zone', async () => {
     assert.equal((await listAlerts('?severity=critical&limit=50')).alerts.length, 1);
     assert.equal((await listAlerts('?severity=warning&limit=50')).alerts.length, 2);
-    assert.equal((await listAlerts('?type=apriltag&limit=50')).alerts.length, 1);
+    assert.equal((await listAlerts('?type=apriltag&limit=50')).alerts.length, 1, 'recorded history stays filterable');
     assert.equal((await listAlerts(`?cameraId=${TEST_CAMERA_ID}&limit=50`)).alerts.length, 2);
     assert.equal((await listAlerts('?zoneName=Test%20Zone%201&limit=50')).alerts.length, 1);
   });
@@ -420,7 +464,7 @@ describe('filtering', () => {
   it('combines filters', async () => {
     const { alerts } = await listAlerts(`?severity=warning&cameraId=${TEST_CAMERA_ID}&status=new&limit=50`);
     assert.equal(alerts.length, 1);
-    assert.equal(alerts[0].type, 'apriltag');
+    assert.equal(alerts[0].type, 'apriltag', 'the recorded one, not the critical unattended_object on the same camera');
   });
 
   it('returns newest first', async () => {

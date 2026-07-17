@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ShieldAlert } from 'lucide-react';
-import type { AprilTagMapping, VisionAlert } from '../../lib/vision/types';
+import type { VisionAlert } from '../../lib/vision/types';
 import { Card, CardHeader } from '../ui/Card';
 import { EmptyState } from '../ui/EmptyState';
 import { Button } from '../ui/Button';
@@ -16,15 +16,13 @@ export interface FeedAlert extends VisionAlert {
 
 interface AlertFeedProps {
   alerts: FeedAlert[];
-  mappings: AprilTagMapping[];
   onAcknowledge: (id: string) => void;
   onAcknowledgeAll: () => void;
 }
 
-export function AlertFeed({ alerts, mappings, onAcknowledge, onAcknowledgeAll }: AlertFeedProps) {
+export function AlertFeed({ alerts, onAcknowledge, onAcknowledgeAll }: AlertFeedProps) {
   const [selected, setSelected] = useState<VisionAlert | null>(null);
   const unacknowledgedCount = alerts.filter((alert) => !alert.acknowledged).length;
-  const mappingByTagId = new Map(mappings.map((mapping) => [mapping.tagId, mapping]));
 
   return (
     <Card>
@@ -51,7 +49,6 @@ export function AlertFeed({ alerts, mappings, onAcknowledge, onAcknowledgeAll }:
             <AlertCard
               key={alert.id}
               alert={alert}
-              mapping={alert.type === 'apriltag' ? mappingByTagId.get(Number(alert.metadata.tagId)) : undefined}
               persisted={alert.persisted}
               onAcknowledge={onAcknowledge}
               onView={setSelected}
@@ -60,13 +57,7 @@ export function AlertFeed({ alerts, mappings, onAcknowledge, onAcknowledgeAll }:
         </ul>
       )}
 
-      <AlertDetailModal
-        alert={selected}
-        mapping={
-          selected?.type === 'apriltag' ? mappingByTagId.get(Number(selected.metadata.tagId)) : undefined
-        }
-        onClose={() => setSelected(null)}
-      />
+      <AlertDetailModal alert={selected} onClose={() => setSelected(null)} />
     </Card>
   );
 }

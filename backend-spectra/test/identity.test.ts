@@ -8,7 +8,7 @@ interface TestRole {
   key: string;
   name: string;
   active: boolean;
-  permissions: { weaponExempt: boolean; zones: Array<{ zoneId: string; allowed: boolean }> };
+  permissions: { actions: Array<{ action: string; zoneId: string | null; rule: string }> };
 }
 
 interface TestPerson {
@@ -82,9 +82,9 @@ describe('role seeding', () => {
       'exactly two roles, and nothing else',
     );
     assert.ok(roles.every((role) => role.active));
-    // Restrictive by default: being permitted anywhere is an admin decision.
-    assert.ok(roles.every((role) => role.permissions.weaponExempt === false));
-    assert.ok(roles.every((role) => role.permissions.zones.length === 0));
+    // Restrictive by default: with no rules written, every action restricts.
+    // Being permitted anywhere is an admin decision, not a starting state.
+    assert.ok(roles.every((role) => role.permissions.actions.length === 0));
   });
 
   it('does not resurrect roles once any role exists', async () => {
@@ -143,6 +143,18 @@ describe('roles: validation and lifecycle', () => {
       body: JSON.stringify({ key: 'staff', name: 'Staff again' }),
     });
     assert.equal(duplicate.status, 409);
+  });
+
+  it('refuses the reserved unidentified_person key', async () => {
+    const response = await fetch(`${server.baseUrl}/api/roles`, {
+      method: 'POST',
+      headers: jsonHeaders(adminCookie),
+      body: JSON.stringify({ key: 'unidentified_person', name: 'Sneaky' }),
+    });
+    // A role with this key would make every decision ambiguous: did the rule
+    // come from somebody's role, or from the unidentified-person policy?
+    assert.equal(response.status, 400);
+    assert.match((await readJson<{ error: string }>(response)).error, /reserved/i);
   });
 
   it('supports custom roles beyond the seeded two', async () => {
@@ -220,40 +232,79 @@ describe('role permissions', () => {
     return zone._id;
   }
 
-  it('sets the weapon exemption and per-zone access', async () => {
+  it('writes a per-zone restricted_area rule', async () => {
     const zoneId = await createZone('Test Restricted Area');
 
     const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
       method: 'PATCH',
       headers: jsonHeaders(adminCookie),
-      body: JSON.stringify({ permissions: { weaponExempt: true, zones: [{ zoneId, allowed: true }] } }),
+      body: JSON.stringify({
+        permissions: { actions: [{ action: 'restricted_area', zoneId, rule: 'allow' }] },
+      }),
     });
     assert.equal(response.status, 200);
 
     const role = await readJson<TestRole>(response);
-    assert.equal(role.permissions.weaponExempt, true);
-    assert.equal(role.permissions.zones.length, 1);
-    assert.equal(String(role.permissions.zones[0].zoneId), zoneId);
-    assert.equal(role.permissions.zones[0].allowed, true);
+    assert.equal(role.permissions.actions.length, 1);
+    assert.equal(role.permissions.actions[0].action, 'restricted_area');
+    assert.equal(String(role.permissions.actions[0].zoneId), zoneId);
+    assert.equal(role.permissions.actions[0].rule, 'allow');
   });
 
-  it('rejects a permission naming a zone that does not exist', async () => {
+  it('stores an explicit restrict, which is not the same as saying nothing', async () => {
+    const zoneId = await createZone('Test Explicit Deny');
     const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
       method: 'PATCH',
       headers: jsonHeaders(adminCookie),
       body: JSON.stringify({
-        permissions: { weaponExempt: false, zones: [{ zoneId: '000000000000000000000000', allowed: true }] },
+        permissions: { actions: [{ action: 'restricted_area', zoneId, rule: 'restrict' }] },
       }),
     });
-    assert.equal(response.status, 400, 'a permission for a non-existent zone would read as "allowed" but do nothing');
+    assert.equal(response.status, 200);
+    // Same effect as no rule, but it records that somebody considered the zone
+    // and decided — worth keeping.
+    assert.equal((await readJson<TestRole>(response)).permissions.actions[0].rule, 'restrict');
   });
 
-  it('rejects malformed permissions', async () => {
+  it('refuses a rule for an action nobody may configure, quoting the catalog', async () => {
+    const cases: Array<[string, RegExp]> = [
+      // No detector exists, so a rule would apply to nothing.
+      ['possible_weapon', /not active yet/i],
+      // Ownership can't be established once the owner walks away.
+      ['unattended_object', /ownership cannot be established/i],
+    ];
+
+    for (const [action, expected] of cases) {
+      const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
+        method: 'PATCH',
+        headers: jsonHeaders(adminCookie),
+        body: JSON.stringify({ permissions: { actions: [{ action, zoneId: null, rule: 'allow' }] } }),
+      });
+      assert.equal(response.status, 400, `${action} must not be configurable`);
+      assert.match((await readJson<{ error: string }>(response)).error, expected);
+    }
+  });
+
+  it('rejects a rule naming a zone that does not exist', async () => {
+    const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
+      method: 'PATCH',
+      headers: jsonHeaders(adminCookie),
+      body: JSON.stringify({
+        permissions: { actions: [{ action: 'restricted_area', zoneId: '000000000000000000000000', rule: 'allow' }] },
+      }),
+    });
+    assert.equal(response.status, 400, 'a rule for a non-existent zone would read as "allowed" but do nothing');
+  });
+
+  it('rejects malformed rules', async () => {
     const cases: unknown[] = [
-      { weaponExempt: 'yes' },
-      { zones: 'nope' },
-      { zones: [{ zoneId: 'not-an-id', allowed: true }] },
-      { zones: [{ zoneId: '000000000000000000000000' }] },
+      { actions: 'nope' },
+      { actions: [{ action: 'teleportation', zoneId: null, rule: 'allow' }] },
+      { actions: [{ action: 'restricted_area', zoneId: 'not-an-id', rule: 'allow' }] },
+      // Zone-scoped: a restricted_area rule with no zone applies to nothing.
+      { actions: [{ action: 'restricted_area', zoneId: null, rule: 'allow' }] },
+      { actions: [{ action: 'restricted_area', zoneId: '000000000000000000000000', rule: 'maybe' }] },
+      {},
     ];
     for (const permissions of cases) {
       const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
@@ -265,16 +316,21 @@ describe('role permissions', () => {
     }
   });
 
-  it('rejects duplicate zone entries', async () => {
+  it('rejects two rules for the same action and zone', async () => {
     const zoneId = await createZone('Test Duplicate Zone');
     const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
       method: 'PATCH',
       headers: jsonHeaders(adminCookie),
       body: JSON.stringify({
-        permissions: { weaponExempt: false, zones: [{ zoneId, allowed: true }, { zoneId, allowed: false }] },
+        permissions: {
+          actions: [
+            { action: 'restricted_area', zoneId, rule: 'allow' },
+            { action: 'restricted_area', zoneId, rule: 'restrict' },
+          ],
+        },
       }),
     });
-    assert.equal(response.status, 400, 'contradictory duplicates must not be storable');
+    assert.equal(response.status, 400, 'whichever won would be arbitrary');
   });
 });
 

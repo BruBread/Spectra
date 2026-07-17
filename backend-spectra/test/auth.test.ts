@@ -184,7 +184,7 @@ describe('authorization: operator versus admin', () => {
     const cases: Array<[string, RequestInit]> = [
       ['/api/cameras', { method: 'POST', body: JSON.stringify({ name: 'x', sourceType: 'local-device' }) }],
       ['/api/vision/settings', { method: 'PUT', body: JSON.stringify({ cameraId: 'test-camera-alpha' }) }],
-      ['/api/vision/apriltag-mappings', { method: 'POST', body: JSON.stringify({ tagId: 1, label: 'x', loraDeviceId: 'y' }) }],
+      ['/api/unidentified-policy', { method: 'PUT', body: JSON.stringify({ rules: [] }) }],
     ];
 
     for (const [path, init] of cases) {

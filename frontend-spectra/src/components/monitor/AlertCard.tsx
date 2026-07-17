@@ -1,5 +1,5 @@
-import { Check, Radio, Wifi, WifiOff } from 'lucide-react';
-import type { AprilTagMapping, VisionAlert } from '../../lib/vision/types';
+import { Check, Wifi, WifiOff } from 'lucide-react';
+import type { VisionAlert } from '../../lib/vision/types';
 import { ALL_DETECTION_LABELS } from '../../lib/vision/types';
 import { Badge, type BadgeTone } from '../ui/Badge';
 import { RelativeTime } from '../ui/RelativeTime';
@@ -13,15 +13,12 @@ function toneForConfidence(confidence: number): BadgeTone {
 
 interface AlertCardProps {
   alert: VisionAlert;
-  mapping?: AprilTagMapping;
   persisted: boolean;
   onAcknowledge: (id: string) => void;
   onView: (alert: VisionAlert) => void;
 }
 
-export function AlertCard({ alert, mapping, persisted, onAcknowledge, onView }: AlertCardProps) {
-  const tagId = alert.type === 'apriltag' ? (alert.metadata.tagId as number | undefined) : undefined;
-
+export function AlertCard({ alert, persisted, onAcknowledge, onView }: AlertCardProps) {
   return (
     <li className={styles.card} data-acknowledged={alert.acknowledged}>
       <button type="button" className={styles.thumbButton} onClick={() => onView(alert)} aria-label="View snapshot">
@@ -39,17 +36,6 @@ export function AlertCard({ alert, mapping, persisted, onAcknowledge, onView }: 
           <Badge tone={toneForConfidence(alert.confidence)}>{Math.round(alert.confidence * 100)}% confidence</Badge>
         </div>
         <p className={styles.message}>{alert.message}</p>
-
-        {tagId !== undefined ? (
-          <p className={styles.tagLink}>
-            <Radio size={12} aria-hidden="true" /> Tag {tagId}
-            {mapping ? (
-              <span className={styles.tagDevice}> → {mapping.label} ({mapping.loraDeviceId})</span>
-            ) : (
-              <span className={styles.tagUnmapped}> → no LoRa device mapped</span>
-            )}
-          </p>
-        ) : null}
 
         <div className={styles.metaRow}>
           <span className={styles.cameraId}>{alert.cameraId}</span>

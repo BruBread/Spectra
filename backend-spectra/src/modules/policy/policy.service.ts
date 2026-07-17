@@ -1,13 +1,16 @@
 import { PolicyDecision } from './policy.model.js';
-import type { IdentityState, PolicyDecisionOutcome } from '../identity/identity.types.js';
-import type { AnyDetectionType } from '../vision/vision.types.js';
+import type { PolicyDecisionOutcome, PolicySubject, UnidentifiedReason } from './policy.types.js';
+import type { ActionKey, PolicyRule, RuleSource } from './action.catalog.js';
 
 export interface ListPolicyDecisionsParams {
-  detectionType?: AnyDetectionType;
+  action?: ActionKey;
   cameraId?: string;
   zoneId?: string;
   personId?: string;
-  identityState?: IdentityState;
+  subject?: PolicySubject;
+  unidentifiedReason?: UnidentifiedReason;
+  ruleSource?: RuleSource;
+  ruleApplied?: PolicyRule;
   decision?: PolicyDecisionOutcome;
   from?: Date;
   to?: Date;
@@ -21,11 +24,14 @@ export interface ListPolicyDecisionsParams {
  */
 export function listPolicyDecisions(params: ListPolicyDecisionsParams) {
   const query: Record<string, unknown> = {};
-  if (params.detectionType) query.detectionType = params.detectionType;
+  if (params.action) query.action = params.action;
   if (params.cameraId) query.cameraId = params.cameraId;
   if (params.zoneId) query.zoneId = params.zoneId;
   if (params.personId) query.personId = params.personId;
-  if (params.identityState) query.identityState = params.identityState;
+  if (params.subject) query.subject = params.subject;
+  if (params.unidentifiedReason) query.unidentifiedReason = params.unidentifiedReason;
+  if (params.ruleSource) query.ruleSource = params.ruleSource;
+  if (params.ruleApplied) query.ruleApplied = params.ruleApplied;
   if (params.decision) query.decision = params.decision;
   if (params.from || params.to) {
     query.createdAt = { ...(params.from && { $gte: params.from }), ...(params.to && { $lte: params.to }) };

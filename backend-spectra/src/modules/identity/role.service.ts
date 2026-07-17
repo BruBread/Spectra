@@ -72,9 +72,9 @@ export async function deleteRole(id: string): Promise<{ deleted: boolean; usage:
   return { deleted: true, usage };
 }
 
-/** Drops a zone from every role's permissions — used when a zone is deleted. */
+/** Drops a zone from every role's rules — used when a zone is deleted. */
 export function removeZoneFromAllRoles(zoneId: string) {
-  return Role.updateMany({ 'permissions.zones.zoneId': zoneId }, { $pull: { 'permissions.zones': { zoneId } } });
+  return Role.updateMany({ 'permissions.actions.zoneId': zoneId }, { $pull: { 'permissions.actions': { zoneId } } });
 }
 
 export function countRoles() {

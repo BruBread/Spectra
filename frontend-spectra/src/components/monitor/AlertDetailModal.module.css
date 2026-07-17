@@ -40,27 +40,6 @@
   color: var(--color-text);
 }
 
-.tagBlock {
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--color-accent-soft);
-}
-
-.tagTitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--color-accent);
-}
-
-.tagDetail {
-  margin-top: 4px;
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
-}
-
 .message {
   font-size: 0.875rem;
   color: var(--color-text);

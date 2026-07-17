@@ -2,6 +2,10 @@ import { Zone } from './zones.model.js';
 import { Role } from '../identity/role.model.js';
 import { PolicyDecision } from '../policy/policy.model.js';
 import { removeZoneFromAllRoles } from '../identity/role.service.js';
+import {
+  countUnidentifiedRulesForZone,
+  removeZoneFromUnidentifiedPolicy,
+} from '../policy/unidentifiedPolicy.service.js';
 
 export interface ZoneRect {
   x: number;
@@ -44,24 +48,28 @@ export function updateZone(
 
 export interface ZoneUsage {
   rolePermissions: number;
+  unidentifiedPolicyRules: number;
   policyDecisions: number;
 }
 
 export async function zoneUsage(id: string): Promise<ZoneUsage> {
-  const [rolePermissions, policyDecisions] = await Promise.all([
-    Role.countDocuments({ 'permissions.zones.zoneId': id }),
+  const [rolePermissions, unidentifiedPolicyRules, policyDecisions] = await Promise.all([
+    Role.countDocuments({ 'permissions.actions.zoneId': id }),
+    countUnidentifiedRulesForZone(id),
     PolicyDecision.countDocuments({ zoneId: id }),
   ]);
-  return { rolePermissions, policyDecisions };
+  return { rolePermissions, unidentifiedPolicyRules, policyDecisions };
 }
 
 /**
  * Deletes a zone only when no recorded decision refers to it.
  *
  * A zone named by a policy decision is part of an audit trail and is archived
- * (deactivated) instead. Role permissions alone don't block deletion — they
- * are current configuration, not history, so the zone is simply pulled out of
- * every role on the way out rather than left as a dangling reference.
+ * (deactivated) instead. Rules alone don't block deletion — they are current
+ * configuration, not history, so the zone is pulled out of every role *and*
+ * out of the unidentified-person policy on the way out. Both matter: a rule
+ * left pointing at a deleted zone is unreadable, and a stale `allow` is worse
+ * than unreadable.
  */
 export async function deleteZone(id: string): Promise<{ deleted: boolean; usage: ZoneUsage }> {
   const usage = await zoneUsage(id);
@@ -69,7 +77,7 @@ export async function deleteZone(id: string): Promise<{ deleted: boolean; usage:
     return { deleted: false, usage };
   }
 
-  await removeZoneFromAllRoles(id);
+  await Promise.all([removeZoneFromAllRoles(id), removeZoneFromUnidentifiedPolicy(id)]);
   await Zone.findByIdAndDelete(id);
   return { deleted: true, usage };
 }

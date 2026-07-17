@@ -134,7 +134,7 @@ the monitored-person roles (faculty, student, guard, …) of a later phase.
 
 | Role | May do |
 |---|---|
-| `admin` | Everything: manage cameras, detection settings, AprilTag mappings, and (later) people, roles, credentials, and policies |
+| `admin` | Everything: manage cameras, detection settings, people, roles, zones and policy |
 | `operator` | View cameras, alerts, notifications and device readings; submit detections; acknowledge/review/resolve alerts |
 
 Unauthenticated requests get `401`; authenticated-but-not-permitted get `403`.
@@ -253,6 +253,9 @@ backend-spectra/test/
 ├── readings.anonymous.test.ts   the compatibility flag enabled
 ├── config.guards.test.ts   production refuses development-only settings
 ├── identity.test.ts        roles, people, credential uniqueness, LoRa listing
+├── identityMigration.test.ts  the pre-catalog role permission shape → action rules
+├── actionCatalog.test.ts   the catalog, the restrict default, and its read-only API
+├── unidentifiedPolicy.test.ts  the reserved subject's rules and attribution
 ├── zones.test.ts           zone CRUD, rectangle validation, archive vs delete
 └── policyDecisions.test.ts the read-only audit API and its storage shape
 
@@ -281,6 +284,35 @@ they will build on.
 All routes need a session. Reads are open to `admin` and `operator`; **every
 mutation is `admin`-only**, matching the camera and vision routes.
 
+### Action Catalog
+
+`GET /api/action-catalog` — the actions policy can be written about. **Code-defined
+and closed**: no route adds, edits or removes one, not even for an admin. An
+action carries detection behaviour, severity, evidence requirements and policy
+semantics, none of which an administrator can express by typing a name into a
+form. New actions ship in code, reviewed and tested.
+
+Every rule anywhere resolves to `restrict` unless an administrator wrote
+otherwise (`DEFAULT_RULE`).
+
+| Action | Scope | Detector | Configurable | Enforced |
+|---|---|---|---|---|
+| `restricted_area` | per zone | planned | **yes** | not yet |
+| `possible_weapon` | global | planned | no — *"Not active yet"* | no |
+| `unattended_object` | global | live | no — always alerts | no |
+
+`detector`, `configurable` and `policyEnforced` are three separate fields
+because those rows occupy three different combinations of them. It is also
+what lets `restricted_area` be **configured before it is enforced**, and lets
+the console say exactly that for as long as it's true — the phase that ships
+restricted-area detection flips two flags in one file.
+
+`unattended_object` has **no role exemption, by design**. Once the person who
+left an object walks away, ownership can't be established from a frame, so no
+role can be trusted to excuse it. `possible_weapon` has no detector: the
+current camera and object model cannot reliably detect firearms, and nothing
+here claims otherwise.
+
 ### Roles
 
 Roles here describe *people a camera may see* and are deliberately separate
@@ -288,9 +320,13 @@ from the `admin`/`operator` console roles in [Authentication](#authentication).
 
 Two are seeded at first boot — `security_guard` and `staff` — **only when no
 role exists at all**, so a role an administrator deactivates or removes is
-never resurrected. Both start with **no permissions**: allowed in no zone,
-exempt from nothing. Being permitted somewhere is a decision an admin makes,
-not a default the software assumes. Admins can create further custom roles.
+never resurrected. Both start with **no rules at all**, which means allowed
+nothing. Being permitted somewhere is a decision an admin makes, not a default
+the software assumes. Admins can create further custom roles.
+
+`unidentified_person` is a **reserved key** and rejected: it names the policy
+subject every decision records, and a role sharing it would make a decision's
+origin ambiguous.
 
 | Method | Path | Notes |
 |---|---|---|
@@ -300,17 +336,15 @@ not a default the software assumes. Admins can create further custom roles.
 | `PATCH` | `/api/roles/:id` | Name, description, `active` (deactivate), permissions. `key` is immutable — recorded decisions refer to it |
 | `DELETE` | `/api/roles/:id` | `409` while any person or policy decision references it. Deactivate instead |
 
-`permissions` carries two things and no more:
+`permissions` is `{ actions: [{ action, zoneId, rule }] }` — explicit rules
+drawn from the [Action Catalog](#action-catalog). `rule` is `allow` or
+`restrict`; `zoneId` is required for a zone-scoped action and `null` for a
+global one. **A rule that isn't written restricts**: absence is not
+permission, so a role with no rules is allowed nothing.
 
-- `weaponExempt` — whether a possible-weapon detection may be suppressed for
-  this role. It will only ever apply alongside a readable, registered
-  AprilTag; configuration alone can't grant it.
-- `zones: [{ zoneId, allowed }]` — per-zone access. **A zone absent from the
-  list is denied**: absence is not permission.
-
-There is deliberately **no unattended-object exemption**. Once the person who
-left an object walks away, ownership can't be established from a frame, so no
-role can be trusted to excuse it.
+An explicit `restrict` and a missing rule have the same effect but are stored
+differently on purpose — one records that somebody considered the case and
+decided.
 
 ### People
 
@@ -353,21 +387,58 @@ coordinates so it means the same thing at any resolution.
 
 Zone names are unique per camera. Zones are **not wired into detection yet**.
 
+### Unidentified / No Credential policy
+
+`GET /api/unidentified-policy` (any session) and `PUT /api/unidentified-policy`
+(admin) — policy for people the cameras **cannot identify**.
+
+This is a reserved subject, not a Role and not a Person: it can't be assigned
+to anybody, deleted, or created by an administrator. Somebody is evaluated
+against it whenever there is no readable, registered AprilTag — including when
+a LoRa device is right there, because a wristband is not a credential.
+
+Everything restricts by default, so there is nothing to seed and no code path
+that produces a permissive default. `GET` answers with an empty rule list
+rather than a 404 when nobody has configured it: "no rules" is the real,
+meaningful state, not a missing one. Reading it does not create the document.
+
+Rules use the same `{ action, zoneId, rule }` shape as a role, validated by the
+same code — a rule that validates in one place and not the other would be a way
+around the other's review. Each rule carries its own `updatedBy`/`updatedAt`:
+`allow` here admits *everyone* the cameras cannot identify, so who granted it
+survives an unrelated edit to a different rule. Re-saving an unchanged rule
+keeps its original author.
+
+There is no `DELETE`: removing the policy would be indistinguishable from never
+having configured one. Withdrawing permission means writing `restrict`.
+
 ### Policy decisions
 
 `GET /api/policy-decisions` and `GET /api/policy-decisions/:id` — **read-only,
 by design**. There is no create, update or delete route: an audit trail that
 can be rewritten is not an audit trail.
 
-Filters: `detectionType`, `cameraId`, `zoneId`, `personId`, `identityState`,
-`decision`, `from`, `to`, `limit`. An invalid filter is rejected rather than
-silently widening the view.
+Filters: `action`, `cameraId`, `zoneId`, `personId`, `subject`,
+`unidentifiedReason`, `ruleSource`, `ruleApplied`, `decision`, `from`, `to`,
+`limit`. An invalid filter is rejected rather than silently widening the view.
 
-Each record stores the detection context inline — camera, zone, identity
-state, optional person/role/AprilTag/LoRa details, the outcome, a
+Each record stores the detection context inline — camera, zone, subject,
+optional person/role/AprilTag/LoRa details, the rule and where it came from, a
 human-readable reason and an optional alert reference. That is deliberate: a
 *suppressed* detection produces no alert, so the decision record is the only
 trace it ever happened and has to stand on its own.
+
+Three fields carry the reasoning:
+
+- `subject` — `person` (identified, evaluated against their role) or
+  `unidentified_person`.
+- `unidentifiedReason` — why nobody could be identified: `no_apriltag` (which
+  covers a nearby wristband and no tag), `unregistered_apriltag`,
+  `ambiguous_apriltag`, `inactive_person`, `inactive_role`.
+- `ruleSource` — `role`, `unidentified_policy`, or `default` (nobody wrote a
+  rule and the restrict default caught it). **`unidentified_policy` is what
+  tells a reviewer the no-credential policy applied**, rather than something
+  attached to a person.
 
 Nothing writes these yet.
 
@@ -408,12 +479,17 @@ device-registration flow the backend has.
 
 **Roles.** Zone permission controls appear only once a zone exists — an empty
 permission list would otherwise look like a decision rather than an absence.
-There is **no weapon-exemption control**, because nothing enforces one yet; if
-a role has the flag set through the API it is shown read-only and labelled as
-unenforced, since hiding a permission that exists is worse than showing an
-inert one. Only `allowed` entries are stored: the backend treats an absent
-zone as denied, so an explicit `allowed: false` row would mean the same thing
-while implying a distinction that isn't there.
+The checkbox writes a `restricted_area` `allow` rule and leaves an unticked
+zone unwritten; both deny, and a two-state control can't express the
+difference between "denied" and "considered and denied". Rules for actions
+the catalog marks unconfigurable are shown read-only and labelled unenforced
+when set, since hiding a permission that exists is worse than showing an inert
+one — and they survive an unrelated zone edit rather than being dropped by the
+wholesale replace.
+
+> The Access Control UI still speaks only `restricted_area` zone rules. The
+> catalog-driven action editor and the Unidentified / No Credential section are
+> the next UI phase.
 
 **Zones.** Rectangles are drawn with the same `ZoneDrawer` the Live Monitor
 uses. This page doesn't run the vision pipeline, so it shows the grid rather
@@ -525,8 +601,8 @@ Location: `backend-spectra/src/modules/vision/`
 Alerts are AI-assisted signals for a human to review — never a confirmed
 incident. Endpoints are under `{API_BASE_URL}/api/vision` and all require an
 authenticated session. Reading and triaging alerts is open to `operator` and
-`admin`; changing detection settings and AprilTag mappings is `admin` only
-(see [Authentication](#authentication)).
+`admin`; changing detection settings is `admin` only (see
+[Authentication](#authentication)).
 
 ### Alert shape
 
@@ -534,7 +610,7 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 |---|---|
 | `_id` | Alert id |
 | `cameraId` | Camera the detection came from |
-| `type` | `unattended_object`, `apriltag`. Alerts recorded before the pose-based detectors were removed may also carry a retired type — see [Retired detection types](#retired-detection-types) |
+| `type` | `unattended_object`. Alerts recorded before the pose-based detectors were removed, or before AprilTag went silent, may also carry those types — see [Retired and silent detection types](#retired-and-silent-detection-types) |
 | `severity` | `info` \| `warning` \| `critical` |
 | `status` | `new` \| `acknowledged` \| `under_review` \| `resolved` \| `dismissed` |
 | `read` | Read/unread state for notification badges |
@@ -545,13 +621,22 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 | `metadata` | Detector-specific detail (e.g. `trackId`) |
 | `occurrences` / `lastOccurredAt` | Repeat count and most recent repeat (see grouping) |
 | `acknowledged` | **Legacy.** Kept in sync with `status`: `true` for any status other than `new` |
+| `policy` | Why a policy engine let this alert exist. **Schema only** — null on everything, until restricted-area enforcement ships |
 | `createdAt` | First occurrence |
 
-Severity defaults per type when the client doesn't send one: `apriltag` is
-`info`, everything else is `warning`. A client may send an explicit
-`severity` to override it.
+Severity defaults to `warning` when the client doesn't send one. A client may
+send an explicit `severity` to override it.
 
-### Retired detection types
+### Retired and silent detection types
+
+**AprilTag no longer alerts.** A tag is an identity credential: it says *who*
+somebody is, which is an input to policy rather than an incident. Alerting on
+it put a person's identity into the notification feed every time they walked
+past a camera — noise, and a leak. Decoding still runs every tick and is still
+tunable (`confidenceThreshold` sets decode strictness); it simply never reaches
+the feed, and `POST /alerts` rejects `type: apriltag` with an explanatory
+error. Resolving a tag to a person happens on the backend, so the browser never
+learns who anyone is — the live overlay draws a tag *number* and nothing more.
 
 The pose-based behaviour heuristics — `drowning`, `fighting`, `running`,
 `loitering`, `intoxication` — were **removed from the product**. They guessed
@@ -569,9 +654,12 @@ Their per-camera detector settings are stripped at boot
 `getSettings()` saves the document, and a leftover retired detector config
 would fail validation on the first read.
 
-For a local or development database whose retired-type alerts are just stale
-test data, an opt-in command removes them. It refuses to run against
-production, where that history is real:
+For a local or development database whose alerts of these types are just stale
+test data, an opt-in command removes them (retired types **and** `apriltag`).
+It refuses to run against production, where that history is real. Worth knowing
+for AprilTag specifically: a recorded one names a tag, so those rows are the
+one place a past sighting can still surface in the feed — a reason to consider
+purging them, not a reason to do it automatically:
 
 ```bash
 cd backend-spectra

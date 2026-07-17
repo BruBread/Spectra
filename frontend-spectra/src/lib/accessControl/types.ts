@@ -6,23 +6,24 @@
  * operates the software.
  */
 
-export interface RoleZoneAccess {
-  zoneId: string;
-  allowed: boolean;
+/** Mirrors the backend's code-defined action catalog keys. */
+export type ActionKey = 'restricted_area' | 'possible_weapon' | 'unattended_object';
+
+export type PolicyRule = 'allow' | 'restrict';
+
+/**
+ * One explicit rule. A rule that isn't written restricts — absence is not
+ * permission.
+ */
+export interface ActionRule {
+  action: ActionKey;
+  /** Set for a zone-scoped action; null for a global one. */
+  zoneId: string | null;
+  rule: PolicyRule;
 }
 
 export interface RolePermissions {
-  /**
-   * Whether a possible-weapon detection may be suppressed for this role.
-   *
-   * There is no control for this in the UI: nothing enforces it yet, so a
-   * toggle would imply an effect that does not exist. It is still carried on
-   * every update, because the backend replaces `permissions` wholesale and
-   * omitting it would silently reset a permission we chose not to show.
-   */
-  weaponExempt: boolean;
-  /** Per-zone allow/deny. A zone absent from this list is denied. */
-  zones: RoleZoneAccess[];
+  actions: ActionRule[];
 }
 
 export interface AccessRole {

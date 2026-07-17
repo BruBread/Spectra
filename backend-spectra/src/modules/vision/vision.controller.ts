@@ -5,6 +5,7 @@ import {
   ALERT_STATUSES,
   ALL_DETECTION_TYPES,
   DETECTION_TYPES,
+  SILENT_DETECTION_TYPES,
   type AlertSeverity,
   type AlertStatus,
   type AnyDetectionType,
@@ -96,65 +97,6 @@ export async function putSettings(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export async function listAprilTagMappings(_req: Request, res: Response, next: NextFunction) {
-  try {
-    const mappings = await visionService.listAprilTagMappings();
-    res.json(mappings);
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function createAprilTagMapping(req: Request, res: Response, next: NextFunction) {
-  try {
-    const { tagId, label, loraDeviceId, notes } = req.body;
-    if (typeof tagId !== 'number' || !label || !loraDeviceId) {
-      res.status(400).json({ error: 'tagId (number), label, and loraDeviceId are required' });
-      return;
-    }
-    const mapping = await visionService.createAprilTagMapping({ tagId, label, loraDeviceId, notes }, req.user!.id);
-    res.status(201).json(mapping);
-  } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
-      res.status(409).json({ error: `A mapping for tag ${req.body.tagId} already exists` });
-      return;
-    }
-    next(error);
-  }
-}
-
-export async function updateAprilTagMapping(req: Request, res: Response, next: NextFunction) {
-  try {
-    const { label, loraDeviceId, notes } = req.body ?? {};
-    const updates = {
-      ...(label !== undefined && { label }),
-      ...(loraDeviceId !== undefined && { loraDeviceId }),
-      ...(notes !== undefined && { notes }),
-    };
-    const mapping = await visionService.updateAprilTagMapping(String(req.params.id), updates, req.user!.id);
-    if (!mapping) {
-      res.status(404).json({ error: 'Mapping not found' });
-      return;
-    }
-    res.json(mapping);
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function deleteAprilTagMapping(req: Request, res: Response, next: NextFunction) {
-  try {
-    const mapping = await visionService.deleteAprilTagMapping(String(req.params.id));
-    if (!mapping) {
-      res.status(404).json({ error: 'Mapping not found' });
-      return;
-    }
-    res.status(204).end();
-  } catch (error) {
-    next(error);
-  }
-}
-
 export async function listAlerts(req: Request, res: Response, next: NextFunction) {
   try {
     const { cameraId, type, severity, zoneName, limit } = req.query;
@@ -207,13 +149,16 @@ export async function createAlert(req: Request, res: Response, next: NextFunctio
       return;
     }
     if (!isDetectionType(type)) {
-      // Naming the retired case explicitly: a client still sending one is out
-      // of date, and "invalid type" alone would not say why.
+      // Naming each rejected case explicitly: a client still sending one is
+      // out of date, and "invalid type" alone would not say why.
+      const silent = (SILENT_DETECTION_TYPES as string[]).includes(String(type));
       const retired = (ALL_DETECTION_TYPES as string[]).includes(String(type));
       res.status(400).json({
-        error: retired
-          ? `Detection type "${type}" has been retired and can no longer be recorded. Active types: ${DETECTION_TYPES.join(', ')}`
-          : `type must be one of: ${DETECTION_TYPES.join(', ')}`,
+        error: silent
+          ? `Detection type "${type}" is a silent identity capability and no longer creates alerts. It is read as a credential by policy evaluation instead. Alerting types: ${DETECTION_TYPES.join(', ')}`
+          : retired
+            ? `Detection type "${type}" has been retired and can no longer be recorded. Active types: ${DETECTION_TYPES.join(', ')}`
+            : `type must be one of: ${DETECTION_TYPES.join(', ')}`,
       });
       return;
     }

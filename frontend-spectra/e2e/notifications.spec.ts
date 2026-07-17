@@ -18,11 +18,14 @@ const SEEDED = {
     message: 'E2E fixture — unattended object, critical',
     trackId: 'e2e-1',
   },
-  criticalTag: {
-    type: 'apriltag',
+  // A second critical, distinct by trackId so grouping never folds the two.
+  // AprilTag is a silent identity capability now and the API refuses to
+  // record one, so it can no longer stand in as a second type here.
+  criticalTwo: {
+    type: 'unattended_object',
     severity: 'critical',
     confidence: 0.72,
-    message: 'E2E fixture — apriltag, critical',
+    message: 'E2E fixture — unattended object, second critical',
     trackId: 'e2e-2',
   },
   warning: {
@@ -48,7 +51,7 @@ test.beforeEach(async () => {
 
 async function seedThree() {
   await seedAlert(api, SEEDED.critical);
-  await seedAlert(api, SEEDED.criticalTag);
+  await seedAlert(api, SEEDED.criticalTwo);
   await seedAlert(api, SEEDED.warning);
 }
 
@@ -108,7 +111,8 @@ test.describe('notifications page', () => {
     await page.getByLabel('Severity', { exact: true }).selectOption('critical');
     await expect(page.locator(rows)).toHaveCount(2);
 
-    // critical + apriltag matches one; critical + a retired type matches none.
+    // A retired type still filters — its alerts remain in history — but none
+    // of these are one.
     await page.getByLabel('Type', { exact: true }).selectOption('drowning');
     // Nothing matches: the empty state must say so rather than claim there
     // are no alerts at all.

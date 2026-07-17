@@ -9,11 +9,10 @@ export const visionRouter = Router();
 visionRouter.get('/settings', requireAuth, visionController.getSettings);
 visionRouter.put('/settings', requireAuth, requireRole('admin'), visionController.putSettings);
 
-// Device/credential administration.
-visionRouter.get('/apriltag-mappings', requireAuth, visionController.listAprilTagMappings);
-visionRouter.post('/apriltag-mappings', requireAuth, requireRole('admin'), visionController.createAprilTagMapping);
-visionRouter.patch('/apriltag-mappings/:id', requireAuth, requireRole('admin'), visionController.updateAprilTagMapping);
-visionRouter.delete('/apriltag-mappings/:id', requireAuth, requireRole('admin'), visionController.deleteAprilTagMapping);
+// AprilTag identity now lives on Person (aprilTagId) and is administered
+// under /api/people. The tag→label→LoRa mapping this module used to own was
+// a second, parallel source of truth for who somebody is; two of those is one
+// too many.
 
 // Alerts: operators review and triage, so these stay open to both roles.
 // POST is included — an operator's browser pipeline is what submits detections.

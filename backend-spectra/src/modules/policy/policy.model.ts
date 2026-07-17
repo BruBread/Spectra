@@ -1,6 +1,6 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
-import { IDENTITY_STATES, POLICY_DECISION_OUTCOMES } from '../identity/identity.types.js';
-import { ALL_DETECTION_TYPES } from '../vision/vision.types.js';
+import { ACTION_KEYS, POLICY_RULES, RULE_SOURCES } from './action.catalog.js';
+import { POLICY_DECISION_OUTCOMES, POLICY_SUBJECTS, UNIDENTIFIED_REASONS } from './policy.types.js';
 
 /**
  * Audit record for one policy evaluation.
@@ -15,13 +15,20 @@ import { ALL_DETECTION_TYPES } from '../vision/vision.types.js';
  */
 const policyDecisionSchema = new Schema(
   {
-    detectionType: { type: String, enum: ALL_DETECTION_TYPES, required: true, index: true },
+    /** Which catalog action was evaluated. */
+    action: { type: String, enum: ACTION_KEYS, required: true, index: true },
     cameraId: { type: String, required: true, index: true },
     zoneId: { type: Schema.Types.ObjectId, ref: 'Zone', default: null, index: true },
     zoneName: { type: String, default: null },
 
-    /** How the subject was identified — `unidentified` unless a badge matched. */
-    identityState: { type: String, enum: IDENTITY_STATES, required: true, index: true },
+    /**
+     * Who the rule was about: a specific identified person, or the reserved
+     * unidentified-person subject.
+     */
+    subject: { type: String, enum: POLICY_SUBJECTS, required: true, index: true },
+    /** Why nobody could be identified. Null when subject is `person`. */
+    unidentifiedReason: { type: String, enum: [...UNIDENTIFIED_REASONS, null], default: null },
+
     personId: { type: Schema.Types.ObjectId, ref: 'Person', default: null, index: true },
     personName: { type: String, default: null },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', default: null },
@@ -33,12 +40,18 @@ const policyDecisionSchema = new Schema(
     loraCorroborated: { type: Boolean, required: true, default: false },
     loraLastSeenAt: { type: Date, default: null },
 
+    /** The rule that applied. */
+    ruleApplied: { type: String, enum: POLICY_RULES, required: true },
+    /**
+     * Where that rule came from. `default` means nobody wrote one and the
+     * restrict default caught it — worth telling apart from an administrator
+     * deliberately choosing restrict.
+     */
+    ruleSource: { type: String, enum: RULE_SOURCES, required: true, index: true },
+
     decision: { type: String, enum: POLICY_DECISION_OUTCOMES, required: true, index: true },
     /** Human-readable explanation of why this outcome was reached. */
     reason: { type: String, required: true },
-    /** Which policy applied, when one did. */
-    roleZoneAllowed: { type: Boolean, default: null },
-    weaponExemptApplied: { type: Boolean, default: null },
 
     /** Null when the decision suppressed the detection — no alert exists to point at. */
     alertId: { type: Schema.Types.ObjectId, ref: 'VisionAlert', default: null, index: true },

@@ -1,23 +1,30 @@
 import mongoose from 'mongoose';
 import { env } from '../src/config/env.js';
 import { VisionAlert } from '../src/modules/vision/vision.model.js';
-import { RETIRED_DETECTION_TYPES } from '../src/modules/vision/vision.types.js';
+import { RETIRED_DETECTION_TYPES, SILENT_DETECTION_TYPES } from '../src/modules/vision/vision.types.js';
 
 /**
- * Deletes alerts recorded by detectors that no longer exist.
+ * Deletes alerts of types that can no longer be created: retired detectors,
+ * and `apriltag` from before it became a silent identity credential.
  *
  * Deliberately a manual, opt-in command rather than a boot migration:
  * silently deleting a customer's recorded history because the product
- * narrowed would be indefensible. The schema keeps retired types readable, so
+ * narrowed would be indefensible. The schema keeps these types readable, so
  * doing nothing is a perfectly valid choice — this exists for local and
- * development databases whose retired-type alerts are just stale test noise.
+ * development databases whose alerts of these types are just stale test noise.
+ *
+ * Worth knowing for AprilTag specifically: recorded ones name a tag, so they
+ * are the one place a past sighting can still surface in the feed. That is a
+ * reason to consider purging them, not a reason to do it automatically.
  *
  *   npm run purge:retired-alerts -- --confirm
  */
+const PURGEABLE_TYPES = [...RETIRED_DETECTION_TYPES, ...SILENT_DETECTION_TYPES];
+
 async function main() {
   if (env.isProduction) {
     console.error(
-      '[purge] refusing to run with APP_ENV=production. Retired-type alerts are real recorded history there; they stay readable and are not deleted automatically.',
+      '[purge] refusing to run with APP_ENV=production. These alerts are real recorded history there; they stay readable and are not deleted automatically.',
     );
     process.exit(1);
   }
@@ -25,11 +32,11 @@ async function main() {
   const confirmed = process.argv.includes('--confirm');
 
   await mongoose.connect(env.mongodbUri);
-  const filter = { type: { $in: RETIRED_DETECTION_TYPES } };
+  const filter = { type: { $in: PURGEABLE_TYPES } };
   const matching = await VisionAlert.countDocuments(filter);
 
   if (matching === 0) {
-    console.log('[purge] no retired-type alerts found — nothing to do.');
+    console.log('[purge] no purgeable alerts found — nothing to do.');
     await mongoose.disconnect();
     return;
   }
@@ -41,7 +48,7 @@ async function main() {
   ]);
 
   console.log(`[purge] ${env.appEnv} database: ${env.mongodbUri.replace(/\/\/[^@]*@/, '//')}`);
-  console.log(`[purge] ${matching} retired-type alert(s):`);
+  console.log(`[purge] ${matching} alert(s) of types that can no longer be created:`);
   for (const row of breakdown) {
     console.log(`  ${row._id}: ${row.count}`);
   }
@@ -53,7 +60,7 @@ async function main() {
   }
 
   const { deletedCount } = await VisionAlert.deleteMany(filter);
-  console.log(`\n[purge] deleted ${deletedCount} retired-type alert(s).`);
+  console.log(`\n[purge] deleted ${deletedCount} alert(s).`);
   await mongoose.disconnect();
 }
 

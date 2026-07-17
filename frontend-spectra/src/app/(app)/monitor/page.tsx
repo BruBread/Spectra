@@ -8,16 +8,12 @@ import { createCameraSource } from '../../../lib/vision/cameraSource';
 import type { PipelineAlert } from '../../../lib/vision/pipeline';
 import { defaultVisionSettings, DEFAULT_CAMERA_ID } from '../../../lib/vision/defaults';
 import { defaultSeverityForType } from '../../../lib/vision/types';
-import type { AprilTagMapping, DetectionType, DetectionTypeConfig, VisionSettings } from '../../../lib/vision/types';
+import type { DetectorConfigType, DetectionTypeConfig, VisionSettings } from '../../../lib/vision/types';
 import {
   acknowledgeAlert,
   createAlert,
-  createAprilTagMapping,
-  deleteAprilTagMapping,
   fetchAlerts,
-  fetchAprilTagMappings,
   fetchVisionSettings,
-  updateAprilTagMapping,
   updateVisionSettings,
 } from '../../../lib/api/vision';
 import { useToast } from '../../../context/ToastContext';
@@ -26,8 +22,6 @@ import { supportsDetection } from '../../../lib/cameras/types';
 import { CameraFeed } from '../../../components/monitor/CameraFeed';
 import { AlertFeed, type FeedAlert } from '../../../components/monitor/AlertFeed';
 import { DetectionSettingsPanel } from '../../../components/monitor/DetectionSettingsPanel';
-import { AprilTagMappingManager } from '../../../components/monitor/AprilTagMappingManager';
-import { Tabs, TabPanel } from '../../../components/ui/Tabs';
 import { Select } from '../../../components/ui/Select';
 import styles from './monitor.module.css';
 
@@ -55,10 +49,8 @@ export default function MonitorPage() {
   const selectedCamera = selectableCameras.find((camera) => camera.id === selectedCameraId) ?? null;
 
   const [settings, setSettings] = useState<VisionSettings>(() => defaultVisionSettings(selectedCameraId));
-  const [mappings, setMappings] = useState<AprilTagMapping[]>([]);
   const [alerts, setAlerts] = useState<FeedAlert[]>([]);
   const [backendConnected, setBackendConnected] = useState(true);
-  const [activeTab, setActiveTab] = useState('settings');
   const [previewSnapshot, setPreviewSnapshot] = useState<string | null>(null);
 
   const settingsLoaded = useRef(false);
@@ -94,23 +86,6 @@ export default function MonitorPage() {
     };
   }, [selectedCameraId]);
 
-  // AprilTag mappings aren't camera-scoped — load once.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const result = await fetchAprilTagMappings();
-      if (cancelled) return;
-      if (result.ok && result.data) {
-        setMappings(result.data);
-      } else {
-        setBackendConnected(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const persistSettings = useCallback(
     (next: VisionSettings) => {
       if (!settingsLoaded.current) return;
@@ -127,7 +102,7 @@ export default function MonitorPage() {
   );
 
   const handleUpdateDetector = useCallback(
-    (type: DetectionType, updates: Partial<DetectionTypeConfig>) => {
+    (type: DetectorConfigType, updates: Partial<DetectionTypeConfig>) => {
       setSettings((current) => {
         const next: VisionSettings = {
           ...current,
@@ -243,46 +218,6 @@ export default function MonitorPage() {
     });
   }, []);
 
-  const handleCreateMapping = useCallback(
-    async (input: { tagId: number; label: string; loraDeviceId: string; notes?: string }) => {
-      const result = await createAprilTagMapping(input);
-      if (result.ok && result.data) {
-        setMappings((current) => [...current, result.data as AprilTagMapping].sort((a, b) => a.tagId - b.tagId));
-        showToast(`Tag ${input.tagId} mapped to ${input.loraDeviceId}`, 'success');
-      } else {
-        showToast(result.error ?? 'Could not save the mapping.', 'error');
-      }
-    },
-    [showToast],
-  );
-
-  const handleUpdateMapping = useCallback(
-    async (id: string, input: { label: string; loraDeviceId: string; notes?: string }) => {
-      const result = await updateAprilTagMapping(id, input);
-      if (result.ok && result.data) {
-        const updated = result.data;
-        setMappings((current) => current.map((mapping) => (mapping.id === id ? updated : mapping)));
-        showToast('Mapping updated', 'success');
-      } else {
-        showToast(result.error ?? 'Could not update the mapping.', 'error');
-      }
-    },
-    [showToast],
-  );
-
-  const handleDeleteMapping = useCallback(
-    async (id: string) => {
-      const result = await deleteAprilTagMapping(id);
-      if (result.ok) {
-        setMappings((current) => current.filter((mapping) => mapping.id !== id));
-        showToast('Mapping removed', 'info');
-      } else {
-        showToast(result.error ?? 'Could not remove the mapping.', 'error');
-      }
-    },
-    [showToast],
-  );
-
   return (
     <div className={styles.page}>
       <div className={styles.headerRow}>
@@ -324,35 +259,18 @@ export default function MonitorPage() {
 
       <div className={styles.liveGrid}>
         <CameraFeed {...pipeline} />
-        <AlertFeed alerts={alerts} mappings={mappings} onAcknowledge={handleAcknowledge} onAcknowledgeAll={handleAcknowledgeAll} />
+        <AlertFeed alerts={alerts} onAcknowledge={handleAcknowledge} onAcknowledgeAll={handleAcknowledgeAll} />
       </div>
 
-      <Tabs
-        orientation="horizontal"
-        items={[
-          { id: 'settings', label: 'Detection Settings' },
-          { id: 'devices', label: 'AprilTag Devices' },
-        ]}
-        activeId={activeTab}
-        onChange={setActiveTab}
+      {/* AprilTag identity is administered under Access Control → People
+          (Person.aprilTagId). The "AprilTag Devices" tab that used to live
+          here kept a second, parallel record of who a tag belonged to. */}
+      <DetectionSettingsPanel
+        settings={settings}
+        onUpdateDetector={handleUpdateDetector}
+        onUpdateGlobal={handleUpdateGlobal}
+        snapshotForZoneEditor={previewSnapshot}
       />
-
-      <TabPanel id="settings" activeId={activeTab}>
-        <DetectionSettingsPanel
-          settings={settings}
-          onUpdateDetector={handleUpdateDetector}
-          onUpdateGlobal={handleUpdateGlobal}
-          snapshotForZoneEditor={previewSnapshot}
-        />
-      </TabPanel>
-      <TabPanel id="devices" activeId={activeTab}>
-        <AprilTagMappingManager
-          mappings={mappings}
-          onCreate={handleCreateMapping}
-          onUpdate={handleUpdateMapping}
-          onDelete={handleDeleteMapping}
-        />
-      </TabPanel>
     </div>
   );
 }

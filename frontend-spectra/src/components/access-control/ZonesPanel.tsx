@@ -44,7 +44,11 @@ export function ZonesPanel({ zones, roles, canEdit, onZonesChanged }: ZonesPanel
   const filtersActive = cameraFilter !== 'all' || !showArchived;
 
   const rolesAllowedIn = (zoneId: string) =>
-    roles.data.filter((role) => role.permissions.zones.some((entry) => entry.zoneId === zoneId && entry.allowed));
+    roles.data.filter((role) =>
+      role.permissions.actions.some(
+        (entry) => entry.action === 'restricted_area' && entry.zoneId === zoneId && entry.rule === 'allow',
+      ),
+    );
 
   const handleToggleActive = async (zone: RestrictedZone) => {
     setBusyId(zone.id);

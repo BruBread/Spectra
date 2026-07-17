@@ -1,19 +1,24 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
+import { ACTION_KEYS, POLICY_RULES } from '../policy/action.catalog.js';
 
-const roleZoneAccessSchema = new Schema(
+const actionRuleSchema = new Schema(
   {
-    zoneId: { type: Schema.Types.ObjectId, ref: 'Zone', required: true },
-    allowed: { type: Boolean, required: true },
+    /** Constrained to the code-defined catalog: an unknown action is not configurable. */
+    action: { type: String, enum: ACTION_KEYS, required: true },
+    /** Set for a zone-scoped action; null for a global one. */
+    zoneId: { type: Schema.Types.ObjectId, ref: 'Zone', default: null },
+    rule: { type: String, enum: POLICY_RULES, required: true },
   },
   { _id: false },
 );
 
 const rolePermissionsSchema = new Schema(
   {
-    /** Suppressing a weapon alert additionally requires a matched AprilTag — see identity.types.ts. */
-    weaponExempt: { type: Boolean, required: true, default: false },
-    /** A zone missing from this list is denied: absence is not permission. */
-    zones: { type: [roleZoneAccessSchema], default: [] },
+    /**
+     * Explicit rules only. An action or zone with no rule here restricts —
+     * absence is not permission, so an empty list grants nothing.
+     */
+    actions: { type: [actionRuleSchema], default: [] },
   },
   { _id: false },
 );

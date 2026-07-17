@@ -199,17 +199,36 @@ describe('zones: deletion', () => {
     await fetch(`${server.baseUrl}/api/roles/${role._id}`, {
       method: 'PATCH',
       headers: jsonHeaders(adminCookie),
-      body: JSON.stringify({ permissions: { weaponExempt: false, zones: [{ zoneId: zone._id, allowed: true }] } }),
+      body: JSON.stringify({ permissions: { actions: [{ action: 'restricted_area', zoneId: zone._id, rule: 'allow' }] } }),
     });
 
     const deleted = await fetch(`${server.baseUrl}/api/zones/${zone._id}`, { method: 'DELETE', headers: { Cookie: adminCookie } });
     assert.equal(deleted.status, 204);
 
-    // The permission must not linger pointing at nothing.
-    const after = await readJson<{ permissions: { zones: unknown[] } }>(
+    // The rule must not linger pointing at nothing.
+    const after = await readJson<{ permissions: { actions: unknown[] } }>(
       await fetch(`${server.baseUrl}/api/roles/${role._id}`, { headers: { Cookie: adminCookie } }),
     );
-    assert.equal(after.permissions.zones.length, 0, 'a dangling permission would be unreadable and unsafe');
+    assert.equal(after.permissions.actions.length, 0, 'a dangling rule would be unreadable and unsafe');
+  });
+
+  it('pulls a deleted zone out of the unidentified-person policy too', async () => {
+    const { zone } = await createZone({});
+    await fetch(`${server.baseUrl}/api/unidentified-policy`, {
+      method: 'PUT',
+      headers: jsonHeaders(adminCookie),
+      body: JSON.stringify({ rules: [{ action: 'restricted_area', zoneId: zone._id, rule: 'allow' }] }),
+    });
+
+    assert.equal((await fetch(`${server.baseUrl}/api/zones/${zone._id}`, { method: 'DELETE', headers: { Cookie: adminCookie } })).status, 204);
+
+    // A stale `allow` pointing at a deleted zone is worse than unreadable:
+    // roles are not the only place a zone is referenced, and both have to be
+    // cleaned or the next zone to reuse the id inherits the permission.
+    const policy = await readJson<{ rules: unknown[] }>(
+      await fetch(`${server.baseUrl}/api/unidentified-policy`, { headers: { Cookie: adminCookie } }),
+    );
+    assert.equal(policy.rules.length, 0);
   });
 
   it('refuses to delete a zone named by a recorded policy decision', async () => {

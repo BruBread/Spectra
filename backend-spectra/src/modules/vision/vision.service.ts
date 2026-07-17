@@ -1,6 +1,6 @@
-import { AprilTagMapping, VisionAlert, VisionSettings } from './vision.model.js';
+import { VisionAlert, VisionSettings } from './vision.model.js';
 import {
-  DETECTION_TYPES,
+  DETECTOR_CONFIG_TYPES,
   OPEN_ALERT_STATUSES,
   acknowledgedForStatus,
   defaultDetectorConfigs,
@@ -25,7 +25,7 @@ export async function getSettings(cameraId: string) {
   }
 
   const existingTypes = new Set(settings.detectors.map((detector) => detector.type));
-  const missing = DETECTION_TYPES.filter((type) => !existingTypes.has(type));
+  const missing = DETECTOR_CONFIG_TYPES.filter((type) => !existingTypes.has(type));
   if (missing.length > 0) {
     const backfill = defaultDetectorConfigs().filter((detector) => missing.includes(detector.type));
     settings.detectors.push(...(backfill as (typeof settings.detectors)[number][]));
@@ -53,29 +53,6 @@ export async function replaceSettings(
     { new: true, upsert: true, setDefaultsOnInsert: true },
   );
   return settings;
-}
-
-export function listAprilTagMappings() {
-  return AprilTagMapping.find().sort({ tagId: 1 });
-}
-
-export function createAprilTagMapping(
-  data: { tagId: number; label: string; loraDeviceId: string; notes?: string },
-  actorId: string,
-) {
-  return AprilTagMapping.create({ ...data, createdBy: actorId, updatedBy: actorId });
-}
-
-export function updateAprilTagMapping(
-  id: string,
-  data: Partial<{ label: string; loraDeviceId: string; notes: string }>,
-  actorId: string,
-) {
-  return AprilTagMapping.findByIdAndUpdate(id, { $set: { ...data, updatedBy: actorId } }, { new: true });
-}
-
-export function deleteAprilTagMapping(id: string) {
-  return AprilTagMapping.findByIdAndDelete(id);
 }
 
 interface ListAlertsParams {

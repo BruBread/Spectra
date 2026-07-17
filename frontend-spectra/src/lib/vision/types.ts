@@ -1,5 +1,17 @@
-/** Detection types the pipeline can produce today. */
-export type DetectionType = 'unattended_object' | 'apriltag';
+/** Detection types that can raise an alert. Mirrors the backend's. */
+export type DetectionType = 'unattended_object';
+
+/**
+ * Capabilities the pipeline runs every tick that never raise an alert.
+ *
+ * AprilTag decoding reads an identity credential: a tag says who somebody is,
+ * which is an input to policy rather than an incident. It is still decoded
+ * and still tunable — it just never reaches the feed.
+ */
+export type SilentDetectionType = 'apriltag';
+
+/** What a camera's detector settings may configure. */
+export type DetectorConfigType = DetectionType | SilentDetectionType;
 
 /**
  * Types removed from the product. Their detectors are gone, so nothing can
@@ -8,8 +20,8 @@ export type DetectionType = 'unattended_object' | 'apriltag';
  */
 export type RetiredDetectionType = 'loitering' | 'running' | 'fighting' | 'drowning' | 'intoxication';
 
-/** Anything a stored alert may carry: active types plus retired history. */
-export type AnyDetectionType = DetectionType | RetiredDetectionType;
+/** Anything a stored alert may carry: alerting types, silent ones, and retired history. */
+export type AnyDetectionType = DetectorConfigType | RetiredDetectionType;
 
 /** What raw model output a detector needs computed for it each tick. */
 export type DetectionRequirement = 'objects' | 'apriltag';
@@ -22,7 +34,8 @@ export interface Zone {
 }
 
 export interface DetectionTypeConfig {
-  type: DetectionType;
+  /** Includes silent capabilities: AprilTag decoding is tuned here, it just never alerts. */
+  type: DetectorConfigType;
   enabled: boolean;
   /** 0-1. For AprilTag this maps to fiducial bit-error tolerance, not a model score. */
   confidenceThreshold: number;
@@ -41,16 +54,6 @@ export interface VisionSettings {
   /** How long alerts (incl. snapshots) are retained before backend cleanup. */
   retentionDays: number;
   detectors: DetectionTypeConfig[];
-}
-
-export interface AprilTagMapping {
-  id: string;
-  tagId: number;
-  label: string;
-  loraDeviceId: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
@@ -80,7 +83,6 @@ export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
 
 const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
   unattended_object: 'warning',
-  apriltag: 'info',
 };
 
 /**
@@ -124,8 +126,13 @@ export interface NewVisionAlert {
   metadata?: Record<string, unknown>;
 }
 
-/** Mirrors the backend's DETECTION_TYPES — active types, for settings and new alerts. */
-export const DETECTION_TYPES: DetectionType[] = ['unattended_object', 'apriltag'];
+/** Mirrors the backend's DETECTION_TYPES — what a new alert may be. */
+export const DETECTION_TYPES: DetectionType[] = ['unattended_object'];
+
+export const SILENT_DETECTION_TYPES: SilentDetectionType[] = ['apriltag'];
+
+/** What a camera's detector settings may configure: alerting plus silent. */
+export const DETECTOR_CONFIG_TYPES: DetectorConfigType[] = [...DETECTION_TYPES, ...SILENT_DETECTION_TYPES];
 
 export const RETIRED_DETECTION_TYPES: RetiredDetectionType[] = [
   'loitering',
@@ -136,20 +143,21 @@ export const RETIRED_DETECTION_TYPES: RetiredDetectionType[] = [
 ];
 
 /** For filtering, which must still reach recorded history. */
-export const ALL_DETECTION_TYPES: AnyDetectionType[] = [...DETECTION_TYPES, ...RETIRED_DETECTION_TYPES];
+export const ALL_DETECTION_TYPES: AnyDetectionType[] = [...DETECTOR_CONFIG_TYPES, ...RETIRED_DETECTION_TYPES];
 
-export const DETECTION_LABELS: Record<DetectionType, string> = {
+export const DETECTION_LABELS: Record<DetectorConfigType, string> = {
   unattended_object: 'Unattended Object',
   apriltag: 'AprilTag',
 };
 
 /**
- * Labels for every type an alert may carry. Retired ones are marked so a
- * historical alert is never mistaken for something the system still watches
- * for.
+ * Labels for every type an alert may carry. Types that can no longer raise one
+ * are marked, so a historical alert is never mistaken for something the system
+ * still watches for.
  */
 export const ALL_DETECTION_LABELS: Record<AnyDetectionType, string> = {
   ...DETECTION_LABELS,
+  apriltag: 'AprilTag (no longer alerts)',
   loitering: 'Loitering (retired)',
   running: 'Running (retired)',
   fighting: 'Fighting (retired)',
@@ -157,13 +165,14 @@ export const ALL_DETECTION_LABELS: Record<AnyDetectionType, string> = {
   intoxication: 'Intoxicated Behavior (retired)',
 };
 
-export const DETECTION_DESCRIPTIONS: Record<DetectionType, string> = {
+export const DETECTION_DESCRIPTIONS: Record<DetectorConfigType, string> = {
   unattended_object:
     'Flags bags/backpacks/suitcases left stationary with no person nearby for the configured duration.',
-  apriltag: 'Decodes standard AprilTag 36h11 fiducial markers — the camera-visible identity credential.',
+  apriltag:
+    'Decodes standard AprilTag 36h11 fiducial markers — the camera-visible identity credential. Silent: it raises no alerts and never appears in the feed. Confidence threshold sets decode strictness.',
 };
 
-export const DETECTION_REQUIREMENTS: Record<DetectionType, DetectionRequirement> = {
+export const DETECTION_REQUIREMENTS: Record<DetectorConfigType, DetectionRequirement> = {
   unattended_object: 'objects',
   apriltag: 'apriltag',
 };

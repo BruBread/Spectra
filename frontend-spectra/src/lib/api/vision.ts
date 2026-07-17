@@ -2,7 +2,6 @@ import type {
   AlertSeverity,
   AlertStatus,
   AnyDetectionType,
-  AprilTagMapping,
   DetectionType,
   NewVisionAlert,
   VisionAlert,
@@ -13,18 +12,6 @@ import { request } from './client';
 
 // Re-exported for the modules that already import ApiResult from here.
 export type { ApiResult };
-
-function normalizeMapping(raw: Record<string, unknown>): AprilTagMapping {
-  return {
-    id: String(raw._id ?? raw.id),
-    tagId: Number(raw.tagId),
-    label: String(raw.label),
-    loraDeviceId: String(raw.loraDeviceId),
-    notes: raw.notes ? String(raw.notes) : undefined,
-    createdAt: String(raw.createdAt ?? ''),
-    updatedAt: String(raw.updatedAt ?? ''),
-  };
-}
 
 function normalizeAlert(raw: Record<string, unknown>): VisionAlert {
   const createdAt = String(raw.createdAt ?? '');
@@ -59,42 +46,6 @@ export async function updateVisionSettings(settings: VisionSettings): Promise<Ap
     method: 'PUT',
     body: JSON.stringify(settings),
   });
-}
-
-export async function fetchAprilTagMappings(): Promise<ApiResult<AprilTagMapping[]>> {
-  const result = await request<Record<string, unknown>[]>('/api/vision/apriltag-mappings');
-  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
-  return { data: result.data.map(normalizeMapping), ok: true };
-}
-
-export async function createAprilTagMapping(input: {
-  tagId: number;
-  label: string;
-  loraDeviceId: string;
-  notes?: string;
-}): Promise<ApiResult<AprilTagMapping>> {
-  const result = await request<Record<string, unknown>>('/api/vision/apriltag-mappings', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
-  return { data: normalizeMapping(result.data), ok: true };
-}
-
-export async function updateAprilTagMapping(
-  id: string,
-  input: Partial<{ label: string; loraDeviceId: string; notes: string }>,
-): Promise<ApiResult<AprilTagMapping>> {
-  const result = await request<Record<string, unknown>>(`/api/vision/apriltag-mappings/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(input),
-  });
-  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
-  return { data: normalizeMapping(result.data), ok: true };
-}
-
-export async function deleteAprilTagMapping(id: string): Promise<ApiResult<null>> {
-  return request<null>(`/api/vision/apriltag-mappings/${id}`, { method: 'DELETE' });
 }
 
 export interface AlertQuery {

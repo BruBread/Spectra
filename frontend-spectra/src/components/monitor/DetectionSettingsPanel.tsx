@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { MapPin } from 'lucide-react';
-import type { DetectionType, DetectionTypeConfig, VisionSettings } from '../../lib/vision/types';
+import type { DetectorConfigType, DetectionTypeConfig, VisionSettings } from '../../lib/vision/types';
 import { DETECTION_DESCRIPTIONS, DETECTION_LABELS } from '../../lib/vision/types';
 import { Card, CardHeader } from '../ui/Card';
 import { Switch } from '../ui/Switch';
@@ -13,7 +13,7 @@ import styles from './DetectionSettingsPanel.module.css';
 
 interface DetectionSettingsPanelProps {
   settings: VisionSettings;
-  onUpdateDetector: (type: DetectionType, updates: Partial<DetectionTypeConfig>) => void;
+  onUpdateDetector: (type: DetectorConfigType, updates: Partial<DetectionTypeConfig>) => void;
   onUpdateGlobal: (updates: Partial<Pick<VisionSettings, 'processingIntervalMs' | 'retentionDays'>>) => void;
   snapshotForZoneEditor: string | null;
 }
@@ -24,7 +24,7 @@ export function DetectionSettingsPanel({
   onUpdateGlobal,
   snapshotForZoneEditor,
 }: DetectionSettingsPanelProps) {
-  const [zoneEditorType, setZoneEditorType] = useState<DetectionType | null>(null);
+  const [zoneEditorType, setZoneEditorType] = useState<DetectorConfigType | null>(null);
   const zoneEditorConfig = settings.detectors.find((detector) => detector.type === zoneEditorType);
 
   return (

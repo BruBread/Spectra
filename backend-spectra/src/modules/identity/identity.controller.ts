@@ -4,7 +4,9 @@ import * as roleService from './role.service.js';
 import * as personService from './person.service.js';
 import { listKnownLoraDevices } from './loraDevices.service.js';
 import { Zone } from '../zones/zones.model.js';
-import type { RolePermissions, RoleZoneAccess } from './identity.types.js';
+import { RESERVED_ROLE_KEYS, type RolePermissions } from './identity.types.js';
+import { parseActionRules } from '../policy/actionRules.validate.js';
+import type { ActionRule } from '../policy/action.catalog.js';
 
 function isObjectId(value: unknown): value is string {
   return typeof value === 'string' && mongoose.isValidObjectId(value);
@@ -25,39 +27,21 @@ function duplicateKeyField(error: unknown): string | null {
 }
 
 /**
- * Validates a permissions payload, including that every zone referenced
- * actually exists — a permission naming a zone that doesn't is a silent
- * no-op waiting to be misread as "allowed".
+ * Validates a role's permissions payload.
+ *
+ * `actions` replaces the whole rule set, so a caller sending it must send
+ * every rule the role should keep.
  */
 async function parsePermissions(value: unknown): Promise<RolePermissions | { error: string }> {
   if (typeof value !== 'object' || value === null) return { error: 'permissions must be an object' };
 
-  const input = value as { weaponExempt?: unknown; zones?: unknown };
+  const input = value as { actions?: unknown };
+  if (input.actions === undefined) return { error: 'permissions.actions is required' };
 
-  if (input.weaponExempt !== undefined && typeof input.weaponExempt !== 'boolean') {
-    return { error: 'permissions.weaponExempt must be a boolean' };
-  }
+  const rules = await parseActionRules(input.actions);
+  if ('error' in rules) return { error: rules.error };
 
-  const zones: RoleZoneAccess[] = [];
-  if (input.zones !== undefined) {
-    if (!Array.isArray(input.zones)) return { error: 'permissions.zones must be an array' };
-
-    for (const entry of input.zones) {
-      if (typeof entry !== 'object' || entry === null) return { error: 'each permissions.zones entry must be an object' };
-      const { zoneId, allowed } = entry as { zoneId?: unknown; allowed?: unknown };
-      if (!isObjectId(zoneId)) return { error: 'permissions.zones[].zoneId must be a valid zone id' };
-      if (typeof allowed !== 'boolean') return { error: 'permissions.zones[].allowed must be a boolean' };
-      zones.push({ zoneId, allowed });
-    }
-
-    const ids = zones.map((zone) => zone.zoneId);
-    if (new Set(ids).size !== ids.length) return { error: 'permissions.zones contains duplicate zoneId entries' };
-
-    const found = await Zone.countDocuments({ _id: { $in: ids } });
-    if (found !== ids.length) return { error: 'permissions.zones references a zone that does not exist' };
-  }
-
-  return { weaponExempt: input.weaponExempt ?? false, zones };
+  return { actions: rules as ActionRule[] };
 }
 
 /* ----------------------------------- roles ---------------------------------- */
@@ -89,6 +73,12 @@ export async function createRole(req: Request, res: Response, next: NextFunction
 
     if (typeof key !== 'string' || !/^[a-z0-9_]+$/.test(key)) {
       res.status(400).json({ error: 'key is required and may contain only lowercase letters, numbers and underscores' });
+      return;
+    }
+    if (RESERVED_ROLE_KEYS.includes(key)) {
+      // Sharing a key with the policy subject would make every decision's
+      // origin ambiguous — role rule, or unidentified-person policy?
+      res.status(400).json({ error: `"${key}" is reserved for the policy subject of the same name and cannot be a role key` });
       return;
     }
     if (typeof name !== 'string' || !name.trim()) {

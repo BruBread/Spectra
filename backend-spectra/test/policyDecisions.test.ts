@@ -5,9 +5,12 @@ import { TEST_ADMIN, TEST_CAMERA_ID, TEST_OPERATOR, jsonHeaders, readJson } from
 
 interface TestDecision {
   _id: string;
-  detectionType: string;
+  action: string;
   cameraId: string;
-  identityState: string;
+  subject: string;
+  unidentifiedReason: string | null;
+  ruleApplied: string;
+  ruleSource: string;
   decision: string;
   reason: string;
   alertId: string | null;
@@ -41,11 +44,12 @@ beforeEach(async () => {
 async function insertDecision(overrides: Record<string, unknown> = {}) {
   const mongoose = (await import('mongoose')).default;
   const { insertedId } = await mongoose.connection.collection('policydecisions').insertOne({
-    detectionType: 'unattended_object',
+    action: 'restricted_area',
     cameraId: TEST_CAMERA_ID,
     zoneId: null,
     zoneName: null,
-    identityState: 'unidentified',
+    subject: 'unidentified_person',
+    unidentifiedReason: 'no_apriltag',
     personId: null,
     personName: null,
     roleId: null,
@@ -54,10 +58,10 @@ async function insertDecision(overrides: Record<string, unknown> = {}) {
     loraDeviceId: null,
     loraCorroborated: false,
     loraLastSeenAt: null,
+    ruleApplied: 'restrict',
+    ruleSource: 'default',
     decision: 'alert_created',
     reason: 'Test fixture decision',
-    roleZoneAllowed: null,
-    weaponExemptApplied: null,
     alertId: null,
     createdAt: new Date(),
     ...overrides,
@@ -111,19 +115,22 @@ describe('policy decisions: storage shape', () => {
     // this record is the only evidence it happened.
     await insertDecision({
       decision: 'suppressed',
-      identityState: 'identified',
+      subject: 'person',
+      unidentifiedReason: null,
       personName: 'Test Person',
       roleKey: 'security_guard',
       aprilTagId: 7,
-      weaponExemptApplied: true,
-      reason: 'Weapon exemption applied for security_guard via AprilTag 7',
+      ruleApplied: 'allow',
+      ruleSource: 'role',
+      reason: 'security_guard is allowed in Test Zone via AprilTag 7',
       alertId: null,
     });
 
     const [decision] = await list('?decision=suppressed');
     assert.equal(decision.decision, 'suppressed');
     assert.equal(decision.alertId, null);
-    assert.match(decision.reason, /exemption/);
+    assert.equal(decision.ruleApplied, 'allow');
+    assert.equal(decision.ruleSource, 'role');
   });
 
   it('stores a decision that created an alert, linked to it', async () => {
@@ -135,22 +142,49 @@ describe('policy decisions: storage shape', () => {
     assert.equal(String(decision.alertId), String(alertId));
   });
 
-  it('accepts a retired detection type, since history may reference one', async () => {
-    await insertDecision({ detectionType: 'drowning' });
-    assert.equal((await list('?detectionType=drowning')).length, 1);
+  it('records that the unidentified-person policy was what applied', async () => {
+    await insertDecision({
+      decision: 'suppressed',
+      subject: 'unidentified_person',
+      unidentifiedReason: 'no_apriltag',
+      ruleApplied: 'allow',
+      ruleSource: 'unidentified_policy',
+      reason: 'Unidentified people are allowed in Test Zone',
+    });
+
+    // Without this, a reviewer cannot tell an admin's blanket "allow every
+    // unidentified person here" from a rule attached to somebody's role.
+    const [decision] = await list('?ruleSource=unidentified_policy');
+    assert.equal(decision.subject, 'unidentified_person');
+    assert.equal(decision.unidentifiedReason, 'no_apriltag');
+  });
+
+  it('tells a written restrict apart from the default catching it', async () => {
+    await insertDecision({ ruleSource: 'default', reason: 'No rule written' });
+    await insertDecision({ ruleSource: 'role', roleKey: 'staff', subject: 'person', unidentifiedReason: null, reason: 'staff is restricted' });
+
+    assert.equal((await list('?ruleSource=default')).length, 1);
+    assert.equal((await list('?ruleSource=role')).length, 1);
   });
 });
 
 describe('policy decisions: filtering', () => {
   it('filters by decision, identity state, camera and detection type', async () => {
-    await insertDecision({ decision: 'alert_created', identityState: 'unidentified' });
-    await insertDecision({ decision: 'suppressed', identityState: 'identified', detectionType: 'apriltag' });
+    await insertDecision({ decision: 'alert_created', subject: 'unidentified_person' });
+    await insertDecision({
+      decision: 'suppressed',
+      subject: 'person',
+      unidentifiedReason: null,
+      action: 'unattended_object',
+      ruleApplied: 'allow',
+    });
     await insertDecision({ decision: 'alert_created', cameraId: 'test-camera-other' });
 
     assert.equal((await list('?decision=alert_created')).length, 2);
     assert.equal((await list('?decision=suppressed')).length, 1);
-    assert.equal((await list('?identityState=identified')).length, 1);
-    assert.equal((await list('?detectionType=apriltag')).length, 1);
+    assert.equal((await list('?subject=person')).length, 1);
+    assert.equal((await list('?action=unattended_object')).length, 1);
+    assert.equal((await list('?ruleApplied=allow')).length, 1);
     assert.equal((await list('?cameraId=test-camera-other')).length, 1);
   });
 
@@ -165,7 +199,17 @@ describe('policy decisions: filtering', () => {
   });
 
   it('rejects an invalid filter rather than silently widening the audit view', async () => {
-    const cases = ['decision=maybe', 'identityState=perhaps', 'detectionType=bogus', 'from=notadate', 'zoneId=not-an-id', 'personId=not-an-id'];
+    const cases = [
+      'decision=maybe',
+      'subject=perhaps',
+      'action=bogus',
+      'ruleSource=vibes',
+      'ruleApplied=sometimes',
+      'unidentifiedReason=dunno',
+      'from=notadate',
+      'zoneId=not-an-id',
+      'personId=not-an-id',
+    ];
     for (const query of cases) {
       const response = await fetch(`${server.baseUrl}/api/policy-decisions?${query}`, { headers: { Cookie: adminCookie } });
       assert.equal(response.status, 400, `${query} should be rejected`);

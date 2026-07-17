@@ -1,5 +1,4 @@
-import { Radio } from 'lucide-react';
-import type { AprilTagMapping, VisionAlert } from '../../lib/vision/types';
+import type { VisionAlert } from '../../lib/vision/types';
 import { ALL_DETECTION_LABELS } from '../../lib/vision/types';
 import { detectionDescription } from '../../lib/notifications/present';
 import { Modal } from '../ui/Modal';
@@ -9,13 +8,11 @@ import styles from './AlertDetailModal.module.css';
 
 interface AlertDetailModalProps {
   alert: VisionAlert | null;
-  mapping?: AprilTagMapping;
   onClose: () => void;
 }
 
-export function AlertDetailModal({ alert, mapping, onClose }: AlertDetailModalProps) {
+export function AlertDetailModal({ alert, onClose }: AlertDetailModalProps) {
   if (!alert) return null;
-  const tagId = alert.type === 'apriltag' ? (alert.metadata.tagId as number | undefined) : undefined;
 
   return (
     <Modal open={Boolean(alert)} onClose={onClose} title={ALL_DETECTION_LABELS[alert.type]} size="md">
@@ -49,21 +46,6 @@ export function AlertDetailModal({ alert, mapping, onClose }: AlertDetailModalPr
             <dd>{alert.acknowledged ? 'Acknowledged' : 'Needs review'}</dd>
           </div>
         </dl>
-
-        {tagId !== undefined ? (
-          <div className={styles.tagBlock}>
-            <p className={styles.tagTitle}>
-              <Radio size={14} aria-hidden="true" /> AprilTag {tagId}
-            </p>
-            {mapping ? (
-              <p className={styles.tagDetail}>
-                Linked LoRa device: <strong>{mapping.loraDeviceId}</strong> ({mapping.label})
-              </p>
-            ) : (
-              <p className={styles.tagDetail}>No LoRa device mapped to this tag yet — add one in AprilTag Devices.</p>
-            )}
-          </div>
-        ) : null}
 
         <p className={styles.message}>{alert.message}</p>
         <p className={styles.disclaimer}>{detectionDescription(alert.type)}</p>
