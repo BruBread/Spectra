@@ -66,6 +66,38 @@ function resolveCorsOrigin(): string[] | boolean {
   return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
 }
 
+/**
+ * Anonymous device-reading access exists only to keep an already-deployed
+ * client working during a local/development migration window. In production
+ * it would hand every device's readings to anyone who can reach the server,
+ * so a misconfiguration must fail loudly at boot rather than quietly serve
+ * data.
+ */
+function resolveAllowAnonymousReadings(): boolean {
+  const enabled = (process.env.LORAWAN_READINGS_ALLOW_ANONYMOUS ?? 'false').toLowerCase() === 'true';
+  if (enabled && isProduction) {
+    throw new Error(
+      'LORAWAN_READINGS_ALLOW_ANONYMOUS=true is prohibited in production: anonymous reads would expose every device\'s readings to anyone who can reach this server. Unset it or set it to false. Production mobile/guest access requires per-guest, short-lived, device-scoped access tokens — see README > Device readings access.',
+    );
+  }
+  return enabled;
+}
+
+/**
+ * MOBILE_API_KEY is a development-only bridge. A single static shared secret
+ * identifies an app build rather than a guest and cannot express which
+ * devices a guest is entitled to, so production must not run on one.
+ */
+function resolveMobileApiKey(): string {
+  const key = process.env.MOBILE_API_KEY ?? '';
+  if (key && isProduction) {
+    throw new Error(
+      'MOBILE_API_KEY must not be set in production: it is a development-only bridge, and a static shared key identifies an app build rather than an individual guest. Unset it. Production mobile/guest access requires per-guest, short-lived, device-scoped access tokens — see README > Device readings access.',
+    );
+  }
+  return key;
+}
+
 const cookieSameSite = (process.env.SESSION_COOKIE_SAMESITE ?? 'lax').toLowerCase() as 'lax' | 'strict' | 'none';
 const cookieSecure = (process.env.SESSION_COOKIE_SECURE ?? String(isProduction)).toLowerCase() === 'true';
 
@@ -98,10 +130,10 @@ export const env = {
   lorawan: {
     ttnWebhookSecret: process.env.TTN_WEBHOOK_SECRET ?? '',
     chirpstackWebhookSecret: process.env.CHIRPSTACK_WEBHOOK_SECRET ?? '',
-    /** Temporary scoped credential for non-browser clients — see readings.auth.ts. */
-    mobileApiKey: process.env.MOBILE_API_KEY ?? '',
-    /** Restores pre-auth public reads for an already-deployed client. Off by default. */
-    allowAnonymousReadings: (process.env.LORAWAN_READINGS_ALLOW_ANONYMOUS ?? 'false').toLowerCase() === 'true',
+    /** Development-only scoped credential for non-browser clients — see readings.auth.ts. */
+    mobileApiKey: resolveMobileApiKey(),
+    /** Development-only pre-auth public reads. Off by default, refused in production. */
+    allowAnonymousReadings: resolveAllowAnonymousReadings(),
     mqttEnabled: (process.env.MQTT_ENABLED ?? 'false').toLowerCase() === 'true',
     mqttProvider: (process.env.MQTT_PROVIDER ?? 'ttn').toLowerCase() as 'ttn' | 'chirpstack',
     mqttBrokerUrl: process.env.MQTT_BROKER_URL ?? '',

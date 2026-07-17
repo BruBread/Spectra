@@ -63,6 +63,8 @@ Key variables — see `backend-spectra/.env.example` for the full list:
 | `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` | Session cookie config |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap admin, seeded only when no user exists |
 | `TTN_WEBHOOK_SECRET` / `CHIRPSTACK_WEBHOOK_SECRET` | Shared secrets verified on inbound LoRaWAN webhooks |
+| `MOBILE_API_KEY` | **Development-only.** Scoped key for non-browser reading access; production refuses to start if set |
+| `LORAWAN_READINGS_ALLOW_ANONYMOUS` | **Development-only.** Restores pre-auth public reads; default `false`, production refuses to start if `true` |
 | `MQTT_ENABLED`, `MQTT_PROVIDER`, `MQTT_BROKER_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TOPIC` | Optional MQTT client config |
 
 ### Frontend (`frontend-spectra`)
@@ -240,11 +242,16 @@ built iOS app already calls it with no credential. It now accepts three kinds
 of caller. The webhooks above are unaffected — they authenticate with
 `X-Webhook-Secret`.
 
-| Caller | Credential | Scope |
-|---|---|---|
-| Admin console | Session cookie (`admin` or `operator`) | Full, including listing all devices |
-| Mobile/device client | `X-Api-Key: <MOBILE_API_KEY>` | **Must** pass `?deviceId=` — cannot list all devices |
-| Anonymous | none, only if `LORAWAN_READINGS_ALLOW_ANONYMOUS=true` | Full — **off by default** |
+| Caller | Credential | Scope | Environments |
+|---|---|---|---|
+| Admin console | Session cookie (`admin` or `operator`) | Full, including listing all devices | All |
+| Mobile/device client | `X-Api-Key: <MOBILE_API_KEY>` | **Must** pass `?deviceId=` — cannot list all devices | **Local/development only** |
+| Anonymous | none, only if `LORAWAN_READINGS_ALLOW_ANONYMOUS=true` | Full — **off by default** | **Local/development only** |
+
+**Production refuses to start** if either `MOBILE_API_KEY` or
+`LORAWAN_READINGS_ALLOW_ANONYMOUS=true` is set, with an error explaining why.
+There is no production mobile/guest path yet — see
+[Required follow-up](#required-follow-up).
 
 ```bash
 # scoped key access (matches the documented iOS call shape)
@@ -257,31 +264,38 @@ readings, and never reaches cameras, vision, or settings.
 
 #### Security limitation (read before shipping)
 
-**`MOBILE_API_KEY` is a temporary bridge, not the design.** It is a single
-static shared secret. Anyone who extracts it from a shipped app binary can
-read any device's readings by knowing a device id. It authenticates *"some
-copy of the mobile app"*, not *"this guest"*, and cannot express which devices
-a given guest is entitled to. Requiring `deviceId` limits blast radius (no
-bulk dump) but is not authorization.
+**`MOBILE_API_KEY` is a temporary development bridge, not the design.** It is
+a single static shared secret. Anyone who extracts it from a shipped app
+binary can read any device's readings by knowing a device id. It
+authenticates *"some copy of the mobile app"*, not *"this guest"*, and cannot
+express which devices a given guest is entitled to. Requiring `deviceId`
+limits blast radius (no bulk dump) but is not authorization. It is therefore
+confined to local/development and rejected in production.
 
 `LORAWAN_READINGS_ALLOW_ANONYMOUS=true` is weaker still — it restores the
 old fully-public behavior for an already-deployed client that cannot yet send
-a credential. Use it only as a stopgap during a migration window, prefer the
-key, and never leave it on in production.
+a credential. It is a local/development stopgap only, off by default, and
+likewise rejected in production.
 
 #### Required follow-up
 
-Replace both with per-guest authentication issuing short-lived tokens that
-carry the guest's authorized device scope, once person/credential records and
-wristband assignment exist. The scope check belongs at the same place the
-`deviceId` check lives today (`readings.auth.ts`): swap "a deviceId is
-present" for "this device is in the caller's authorized set", then retire the
-shared key and the anonymous flag.
+**Production mobile/guest access requires per-guest authentication issuing
+short-lived, device-scoped access tokens.** Each token must identify an
+individual guest and carry only the devices that guest is authorized for, so
+access can be scoped, expired, and revoked per person rather than per app
+build. Neither the shared key nor anonymous reads can express that, which is
+why production accepts neither.
 
-Until the iOS app ships a build that sends `X-Api-Key`, either set
-`LORAWAN_READINGS_ALLOW_ANONYMOUS=true` for the migration window, or accept
-that it cannot read readings. The backend warns at boot about whichever
-posture is in effect, so this never fails silently.
+Build it once person/credential records and wristband assignment exist. The
+scope check belongs exactly where the `deviceId` check lives today
+(`readings.auth.ts`): swap "a deviceId is present" for "this device is in the
+caller's authorized set", then retire the development key and the anonymous
+flag entirely.
+
+Until then, the iOS app can read readings in local/development only (via
+`X-Api-Key`, or `LORAWAN_READINGS_ALLOW_ANONYMOUS=true` during a migration
+window) and has no production path. The backend reports its access posture at
+boot, so this never fails silently.
 
 ## Vision alerts API
 
