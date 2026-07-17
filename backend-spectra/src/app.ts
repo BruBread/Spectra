@@ -11,6 +11,9 @@ import { authRouter } from './modules/auth/auth.routes.js';
 import { lorawanRouter } from './modules/lorawan-ingest/lorawan.routes.js';
 import { visionRouter } from './modules/vision/vision.routes.js';
 import { camerasRouter } from './modules/cameras/cameras.routes.js';
+import { loraDevicesRouter, peopleRouter, rolesRouter } from './modules/identity/identity.routes.js';
+import { zonesRouter } from './modules/zones/zones.routes.js';
+import { policyDecisionsRouter } from './modules/policy/policy.routes.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -67,6 +70,11 @@ export function createApp() {
   app.use('/api/lorawan', lorawanRouter);
   app.use('/api/vision', visionRouter);
   app.use('/api/cameras', camerasRouter);
+  app.use('/api/roles', rolesRouter);
+  app.use('/api/people', peopleRouter);
+  app.use('/api/lora-devices', loraDevicesRouter);
+  app.use('/api/zones', zonesRouter);
+  app.use('/api/policy-decisions', policyDecisionsRouter);
 
   app.use(notFound);
   app.use(errorHandler);

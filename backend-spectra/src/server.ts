@@ -4,6 +4,7 @@ import { connectToDatabase } from './db/mongoose.js';
 import { startLorawanMqttClient } from './modules/lorawan-ingest/lorawan.mqtt.js';
 import { backfillAlertLifecycleFields, stripRetiredDetectorSettings } from './modules/vision/vision.migration.js';
 import { seedAdminUser } from './modules/auth/auth.seed.js';
+import { seedRoles } from './modules/identity/identity.seed.js';
 import { reportReadingsAccessMode } from './modules/lorawan-ingest/readings.auth.js';
 
 async function main() {
@@ -11,6 +12,7 @@ async function main() {
   await backfillAlertLifecycleFields();
   await stripRetiredDetectorSettings();
   await seedAdminUser();
+  await seedRoles();
   reportReadingsAccessMode();
 
   const app = createApp();

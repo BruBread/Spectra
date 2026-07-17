@@ -263,6 +263,106 @@ Each `node:test` file runs in its own process, which is how the differing
 environments (anonymous reads on vs off) stay isolated — `src/config/env.ts`
 reads the environment once at import.
 
+## Identity, zones and policy (backend)
+
+Backend foundation for the MVP's identity model. **Nothing enforces these
+yet** — no detector reads a zone, and no policy decision is written by alert
+ingestion. Those arrive in later phases; this is the data and the admin API
+they will build on.
+
+All routes need a session. Reads are open to `admin` and `operator`; **every
+mutation is `admin`-only**, matching the camera and vision routes.
+
+### Roles
+
+Roles here describe *people a camera may see* and are deliberately separate
+from the `admin`/`operator` console roles in [Authentication](#authentication).
+
+Two are seeded at first boot — `security_guard` and `staff` — **only when no
+role exists at all**, so a role an administrator deactivates or removes is
+never resurrected. Both start with **no permissions**: allowed in no zone,
+exempt from nothing. Being permitted somewhere is a decision an admin makes,
+not a default the software assumes. Admins can create further custom roles.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/roles?active=` | |
+| `GET` | `/api/roles/:id` | |
+| `POST` | `/api/roles` | `{ key, name, description?, permissions? }` |
+| `PATCH` | `/api/roles/:id` | Name, description, `active` (deactivate), permissions. `key` is immutable — recorded decisions refer to it |
+| `DELETE` | `/api/roles/:id` | `409` while any person or policy decision references it. Deactivate instead |
+
+`permissions` carries two things and no more:
+
+- `weaponExempt` — whether a possible-weapon detection may be suppressed for
+  this role. It will only ever apply alongside a readable, registered
+  AprilTag; configuration alone can't grant it.
+- `zones: [{ zoneId, allowed }]` — per-zone access. **A zone absent from the
+  list is denied**: absence is not permission.
+
+There is deliberately **no unattended-object exemption**. Once the person who
+left an object walks away, ownership can't be established from a frame, so no
+role can be trusted to excuse it.
+
+### People
+
+One role each in this MVP. People are never deleted — deactivate them, so the
+credentials they held stay accounted for.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/people?active=&roleId=&q=` | |
+| `GET` | `/api/people/:id` | |
+| `POST` | `/api/people` | `{ name, roleId, notes?, aprilTagId?, loraDeviceId?, active? }` |
+| `PATCH` | `/api/people/:id` | Also how you deactivate (`active: false`) and reassign a role (`roleId`) |
+
+`aprilTagId` and `loraDeviceId` are both optional and both **unique when
+present** (`409` on a clash, `null` to release). A person may hold a badge and
+no wristband, or a wristband and no badge — but a wristband alone will never
+imply camera identity or grant permissions.
+
+### LoRa device selection
+
+`GET /api/lora-devices` lists every device id an admin could assign: the union
+of ids seen in real `DeviceReading` uplinks and ids already assigned to
+someone, each with `source` (`reading` | `manual`), `lastSeenAt`,
+`readingCount` and `assignedTo`. Manually registering an id for hardware that
+hasn't reported yet is just setting `loraDeviceId` on a person; it appears
+here as `manual` so it can't silently vanish from the picker.
+
+### Restricted zones
+
+A zone is a named rectangle on one camera's frame, in relative (0–1)
+coordinates so it means the same thing at any resolution.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/zones?cameraId=&active=` | |
+| `GET` | `/api/zones/:id` | |
+| `POST` | `/api/zones` | `{ name, cameraId, rect: { x, y, width, height } }` |
+| `PATCH` | `/api/zones/:id` | Rename, move the rect, archive (`active: false`). `cameraId` is immutable — a rectangle only means something on its own camera |
+| `DELETE` | `/api/zones/:id` | `409` once a recorded policy decision names it — archive instead. Otherwise deleted, and pulled out of every role's permissions so nothing dangles |
+
+Zone names are unique per camera. Zones are **not wired into detection yet**.
+
+### Policy decisions
+
+`GET /api/policy-decisions` and `GET /api/policy-decisions/:id` — **read-only,
+by design**. There is no create, update or delete route: an audit trail that
+can be rewritten is not an audit trail.
+
+Filters: `detectionType`, `cameraId`, `zoneId`, `personId`, `identityState`,
+`decision`, `from`, `to`, `limit`. An invalid filter is rejected rather than
+silently widening the view.
+
+Each record stores the detection context inline — camera, zone, identity
+state, optional person/role/AprilTag/LoRa details, the outcome, a
+human-readable reason and an optional alert reference. That is deliberate: a
+*suppressed* detection produces no alert, so the decision record is the only
+trace it ever happened and has to stand on its own.
+
+Nothing writes these yet.
+
 ## LoRaWAN ingest module
 
 Location: `backend-spectra/src/modules/lorawan-ingest/`
