@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlarmClock, BarChart3, Bell, Camera as CameraIcon, ScrollText, ShieldAlert, Users } from 'lucide-react';
+import { AlarmClock, BarChart3, Camera as CameraIcon, ScrollText, ShieldAlert, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCameraSources } from '../../context/CameraSourcesContext';
 import { fetchAlertCounts, type AlertCounts } from '../../lib/api/vision';
@@ -9,6 +9,7 @@ import { StatCard } from '../../components/dashboard/StatCard';
 import { TopCamerasPanel } from '../../components/dashboard/TopCamerasPanel';
 import { CameraPreviewPanel } from '../../components/dashboard/CameraPreviewPanel';
 import { DeviceReadingsPanel } from '../../components/dashboard/DeviceReadingsPanel';
+import { RecentAlertsPanel } from '../../components/dashboard/RecentAlertsPanel';
 import { PendingBackendPanel } from '../../components/dashboard/PendingBackendPanel';
 import styles from './home.module.css';
 
@@ -113,12 +114,7 @@ export default function HomePage() {
 
       <div className={styles.row}>
         <CameraPreviewPanel cameras={cameras} />
-        <PendingBackendPanel
-          title="Security Alerts"
-          subtitle="Motion, access and device events"
-          icon={<Bell size={20} aria-hidden="true" />}
-          description="Notifications are not wired to the backend yet. Detections recorded by the vision pipeline are shown on the Live Monitor page."
-        />
+        <RecentAlertsPanel />
       </div>
 
       <DeviceReadingsPanel />

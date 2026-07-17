@@ -49,14 +49,68 @@ export interface AprilTagMapping {
   updatedAt: string;
 }
 
+export type AlertSeverity = 'info' | 'warning' | 'critical';
+
+export const ALERT_SEVERITIES: AlertSeverity[] = ['info', 'warning', 'critical'];
+
+export type AlertStatus = 'new' | 'acknowledged' | 'under_review' | 'resolved' | 'dismissed';
+
+export const ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under_review', 'resolved', 'dismissed'];
+
+/** Statuses that still need a human — mirrors OPEN_ALERT_STATUSES on the backend. */
+export const OPEN_ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under_review'];
+
+export const ALERT_STATUS_LABELS: Record<AlertStatus, string> = {
+  new: 'New',
+  acknowledged: 'Acknowledged',
+  under_review: 'Under review',
+  resolved: 'Resolved',
+  dismissed: 'Dismissed',
+};
+
+export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
+  info: 'Info',
+  warning: 'Warning',
+  critical: 'Critical',
+};
+
+const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
+  drowning: 'critical',
+  fighting: 'critical',
+  running: 'warning',
+  loitering: 'warning',
+  unattended_object: 'warning',
+  intoxication: 'warning',
+  apriltag: 'info',
+};
+
+/**
+ * Mirrors the backend's defaultSeverityForType. Only for optimistic rows shown
+ * before the server responds — the persisted alert's own severity always wins
+ * once it comes back.
+ */
+export function defaultSeverityForType(type: DetectionType): AlertSeverity {
+  return SEVERITY_BY_TYPE[type] ?? 'warning';
+}
+
+/** Mirrors the backend's VisionAlert document. `acknowledged` is legacy — prefer `status`. */
 export interface VisionAlert {
   id: string;
   cameraId: string;
   type: DetectionType;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  read: boolean;
+  zoneName: string | null;
   confidence: number;
   message: string;
   snapshot: string | null;
   metadata: Record<string, unknown>;
+  /** Repeats folded into this alert inside its cooldown window. */
+  occurrences: number;
+  lastOccurredAt: string;
+  statusChangedAt: string | null;
+  /** @deprecated kept in sync with `status` for older clients. */
   acknowledged: boolean;
   createdAt: string;
 }
@@ -69,6 +123,17 @@ export interface NewVisionAlert {
   snapshot: string | null;
   metadata?: Record<string, unknown>;
 }
+
+/** Enumerable form of DetectionType, for building filter options. Mirrors the backend's DETECTION_TYPES. */
+export const DETECTION_TYPES: DetectionType[] = [
+  'unattended_object',
+  'loitering',
+  'running',
+  'fighting',
+  'drowning',
+  'intoxication',
+  'apriltag',
+];
 
 export const DETECTION_LABELS: Record<DetectionType, string> = {
   unattended_object: 'Unattended Object',

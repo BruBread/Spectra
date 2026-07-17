@@ -1,4 +1,12 @@
-import type { AprilTagMapping, DetectionType, NewVisionAlert, VisionAlert, VisionSettings } from '../vision/types';
+import type {
+  AlertSeverity,
+  AlertStatus,
+  AprilTagMapping,
+  DetectionType,
+  NewVisionAlert,
+  VisionAlert,
+  VisionSettings,
+} from '../vision/types';
 import type { ApiResult } from './client';
 import { request } from './client';
 
@@ -18,16 +26,26 @@ function normalizeMapping(raw: Record<string, unknown>): AprilTagMapping {
 }
 
 function normalizeAlert(raw: Record<string, unknown>): VisionAlert {
+  const createdAt = String(raw.createdAt ?? '');
   return {
     id: String(raw._id ?? raw.id),
     cameraId: String(raw.cameraId),
     type: raw.type as DetectionType,
+    // Defaults mirror the backend schema's, so an alert written before a
+    // field existed still renders rather than showing "undefined".
+    severity: (raw.severity as AlertSeverity) ?? 'warning',
+    status: (raw.status as AlertStatus) ?? 'new',
+    read: Boolean(raw.read),
+    zoneName: (raw.zoneName as string | null) ?? null,
     confidence: Number(raw.confidence),
     message: String(raw.message),
     snapshot: (raw.snapshot as string | null) ?? null,
     metadata: (raw.metadata as Record<string, unknown>) ?? {},
+    occurrences: Number(raw.occurrences ?? 1),
+    lastOccurredAt: String(raw.lastOccurredAt ?? createdAt),
+    statusChangedAt: (raw.statusChangedAt as string | null) ?? null,
     acknowledged: Boolean(raw.acknowledged),
-    createdAt: String(raw.createdAt ?? ''),
+    createdAt,
   };
 }
 
@@ -78,19 +96,62 @@ export async function deleteAprilTagMapping(id: string): Promise<ApiResult<null>
   return request<null>(`/api/vision/apriltag-mappings/${id}`, { method: 'DELETE' });
 }
 
-export async function fetchAlerts(params: {
+export interface AlertQuery {
   cameraId?: string;
   type?: DetectionType;
+  severity?: AlertSeverity;
+  /** Multiple statuses are sent comma-separated, which the backend accepts. */
+  status?: AlertStatus[];
+  zoneName?: string;
+  read?: boolean;
+  /** ISO instants, filtered against createdAt. */
+  from?: string;
+  to?: string;
   limit?: number;
-}): Promise<ApiResult<VisionAlert[]>> {
+}
+
+/**
+ * Filtering happens on the backend — every parameter here maps to one the
+ * alerts endpoint already supports, so the list never lies by filtering a
+ * truncated page client-side.
+ */
+export async function fetchAlerts(params: AlertQuery): Promise<ApiResult<VisionAlert[]>> {
   const search = new URLSearchParams();
   if (params.cameraId) search.set('cameraId', params.cameraId);
   if (params.type) search.set('type', params.type);
+  if (params.severity) search.set('severity', params.severity);
+  if (params.status && params.status.length > 0) search.set('status', params.status.join(','));
+  if (params.zoneName) search.set('zoneName', params.zoneName);
+  if (params.read !== undefined) search.set('read', String(params.read));
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
   search.set('limit', String(params.limit ?? 50));
 
   const result = await request<Record<string, unknown>[]>(`/api/vision/alerts?${search.toString()}`);
   if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
   return { data: result.data.map(normalizeAlert), ok: true };
+}
+
+export async function updateAlertStatus(id: string, status: AlertStatus): Promise<ApiResult<VisionAlert>> {
+  const result = await request<Record<string, unknown>>(`/api/vision/alerts/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
+  return { data: normalizeAlert(result.data), ok: true };
+}
+
+export async function markAlertRead(id: string, read = true): Promise<ApiResult<VisionAlert>> {
+  const result = await request<Record<string, unknown>>(`/api/vision/alerts/${id}/read`, {
+    method: 'PATCH',
+    body: JSON.stringify({ read }),
+  });
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
+  return { data: normalizeAlert(result.data), ok: true };
+}
+
+export function markAllAlertsRead(): Promise<ApiResult<{ modified: number }>> {
+  return request<{ modified: number }>('/api/vision/alerts/read-all', { method: 'POST' });
 }
 
 /** Mirrors the backend's `GET /api/vision/alerts/counts` response. */

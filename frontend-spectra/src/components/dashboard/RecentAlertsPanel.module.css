@@ -1,0 +1,88 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-border-strong);
+}
+
+.dot[data-severity='critical'] {
+  background: var(--color-danger);
+}
+
+.dot[data-severity='warning'] {
+  background: var(--color-warning);
+}
+
+.dot[data-severity='info'] {
+  background: var(--color-info);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.item[data-unread='true'] .title {
+  font-weight: 700;
+}
+
+.meta {
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.time {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+}
+
+.viewAll {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

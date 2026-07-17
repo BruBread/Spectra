@@ -7,6 +7,7 @@ import { useVisionPipeline } from '../../../lib/vision/useVisionPipeline';
 import { createCameraSource } from '../../../lib/vision/cameraSource';
 import type { PipelineAlert } from '../../../lib/vision/pipeline';
 import { defaultVisionSettings, DEFAULT_CAMERA_ID } from '../../../lib/vision/defaults';
+import { defaultSeverityForType } from '../../../lib/vision/types';
 import type { AprilTagMapping, DetectionType, DetectionTypeConfig, VisionSettings } from '../../../lib/vision/types';
 import {
   acknowledgeAlert,
@@ -153,16 +154,26 @@ export default function MonitorPage() {
   const handleAlert = useCallback(
     (alert: PipelineAlert) => {
       const localId = makeLocalAlertId();
+      const now = new Date().toISOString();
       const optimistic: FeedAlert = {
         id: localId,
         cameraId: selectedCameraId,
         type: alert.type,
+        // Placeholder values for the moment before the POST returns; the saved
+        // alert replaces this row wholesale below.
+        severity: defaultSeverityForType(alert.type),
+        status: 'new',
+        read: false,
+        zoneName: null,
         confidence: alert.confidence,
         message: alert.message,
         snapshot: alert.snapshot || null,
         metadata: alert.metadata,
+        occurrences: 1,
+        lastOccurredAt: now,
+        statusChangedAt: null,
         acknowledged: false,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
         persisted: false,
       };
       setAlerts((current) => [optimistic, ...current].slice(0, 300));

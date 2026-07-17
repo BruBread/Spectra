@@ -174,3 +174,45 @@
     padding: 12px 16px;
   }
 }
+
+/* Unread badge turns red while any critical alert is still open, so the most
+   urgent state is visible without opening the menu. */
+.badgeDot[data-critical='true'] {
+  background: var(--color-danger);
+}
+
+.notificationFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+}
+
+.viewAllNotifications {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.viewAllNotifications:hover {
+  background: var(--color-neutral-soft);
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

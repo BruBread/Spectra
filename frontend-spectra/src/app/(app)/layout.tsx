@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { AppDataProvider } from '../../context/AppDataContext';
 import { CameraSourcesProvider } from '../../context/CameraSourcesContext';
+import { AlertCountsProvider } from '../../context/AlertCountsContext';
 import { Sidebar } from '../../components/layout/Sidebar';
 import { Topbar } from '../../components/layout/Topbar';
 import { FullPageLoader } from '../../components/ui/FullPageLoader';
@@ -28,6 +29,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <AppDataProvider>
       <CameraSourcesProvider>
+        {/* Inside the auth gate: counts only ever poll for a signed-in session. */}
+        <AlertCountsProvider>
         <div className={styles.shell}>
           <Sidebar mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
           <div className={styles.main}>
@@ -35,6 +38,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <main className={styles.content}>{children}</main>
           </div>
         </div>
+        </AlertCountsProvider>
       </CameraSourcesProvider>
     </AppDataProvider>
   );

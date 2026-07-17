@@ -3,15 +3,17 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, ChevronDown, LogOut, Menu, Settings as SettingsIcon, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAlertCounts } from '../../context/AlertCountsContext';
 import { Avatar } from '../ui/Avatar';
 import { IconButton } from '../ui/IconButton';
 import { Dropdown, DropdownItem } from '../ui/Dropdown';
-import { EmptyState } from '../ui/EmptyState';
+import { TopbarNotifications } from './TopbarNotifications';
 import styles from './Topbar.module.css';
 
 const TITLES: Record<string, string> = {
   '/': 'Home',
   '/cameras': 'Cameras',
+  '/notifications': 'Notifications',
   '/logs': 'Logs',
   '/customers': 'Customers',
   '/settings': 'Settings',
@@ -31,6 +33,12 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const { counts, status: countsStatus } = useAlertCounts();
+
+  // Only shown when the counts request actually succeeded — a badge is a claim
+  // about real unread alerts, so a failed poll shows no badge rather than "0".
+  const unread = countsStatus === 'ok' ? counts?.unread ?? 0 : 0;
+  const criticalOpen = countsStatus === 'ok' ? counts?.criticalOpen ?? 0 : 0;
 
   const handleLogout = async () => {
     await logout();
@@ -53,25 +61,16 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             <IconButton ref={ref} label="Notifications" active={open} onClick={onClick}>
               <span className={styles.bellWrapper}>
                 <Bell size={19} aria-hidden="true" />
+                {unread > 0 ? (
+                  <span className={styles.badgeDot} data-critical={criticalOpen > 0}>
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                ) : null}
               </span>
             </IconButton>
           )}
         >
-          {() => (
-            <div className={styles.notificationPanel}>
-              <div className={styles.notificationHeader}>
-                <span>Notifications</span>
-              </div>
-              <div className={styles.notificationList}>
-                {/* No unread badge until this is backed by the API: a count is a
-                    claim about real events, and there is nothing recording them yet. */}
-                <EmptyState
-                  title="Not connected yet"
-                  description="Notifications aren't wired to the backend yet. Detections recorded by the vision pipeline appear on the Live Monitor page."
-                />
-              </div>
-            </div>
-          )}
+          {(close) => <TopbarNotifications onNavigate={close} />}
         </Dropdown>
 
         <Dropdown

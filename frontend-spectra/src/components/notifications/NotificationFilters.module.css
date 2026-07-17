@@ -1,0 +1,29 @@
+.filters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.resetSlot {
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 1100px) {
+  .filters {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
+  .filters {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}
