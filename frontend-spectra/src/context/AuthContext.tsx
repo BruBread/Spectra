@@ -1,11 +1,11 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { readStorage, writeStorage, removeStorage, STORAGE_KEYS } from '../lib/storage';
-import { DEMO_EMAIL, demoPasswordStore } from '../lib/auth';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import * as authApi from '../lib/api/auth';
+import { setUnauthorizedHandler } from '../lib/api/client';
 import type { AuthUser } from '../lib/types';
 
-interface LoginResult {
+interface MutationResult {
   ok: boolean;
   error?: string;
 }
@@ -14,65 +14,94 @@ interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => LoginResult;
-  logout: () => void;
-  updateProfile: (updates: Partial<Pick<AuthUser, 'name' | 'email'>>) => void;
+  login: (email: string, password: string) => Promise<MutationResult>;
+  logout: () => Promise<void>;
+  updateProfile: (updates: Partial<Pick<AuthUser, 'name' | 'email'>>) => Promise<MutationResult>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<MutationResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const DEFAULT_USER: AuthUser = { name: 'Admin', email: DEMO_EMAIL, role: 'Administrator' };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Reading localStorage is only possible on the client, so the real auth
-  // state can't be known during SSR/first paint. Route guards must wait for
-  // isLoading to clear before deciding to redirect — deciding earlier (e.g.
-  // from a snapshot that "eventually" resyncs) can fire a premature
-  // redirect that a subsequent correction can no longer undo.
+  // The session lives in an HTTP-only cookie the page can't read, so the only
+  // way to know who's signed in is to ask the backend. Route guards must wait
+  // for isLoading to clear before redirecting — deciding earlier fires a
+  // premature redirect that a later correction can no longer undo.
   useEffect(() => {
-    // One-time read of a browser-only store to unblock the isLoading gate above.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setUser(readStorage<AuthUser>(STORAGE_KEYS.auth));
-    setIsLoading(false);
+    let cancelled = false;
+
+    (async () => {
+      const result = await authApi.fetchCurrentUser();
+      if (cancelled) return;
+      setUser(result.ok && result.data ? result.data : null);
+      setIsLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Any API call that 401s means the session is gone (expired, revoked, or the
+  // account was deactivated) — drop the user so the guard sends them to login.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  const login = useCallback(async (email: string, password: string): Promise<MutationResult> => {
+    const result = await authApi.login(email, password);
+    if (!result.ok || !result.data) {
+      return { ok: false, error: result.error ?? 'Unable to sign in. Please try again.' };
+    }
+    setUser(result.data);
+    return { ok: true };
+  }, []);
+
+  const logout = useCallback(async () => {
+    // Clear locally regardless of the response: a failed logout call must not
+    // strand someone in a signed-in-looking UI.
+    await authApi.logout();
+    setUser(null);
+  }, []);
+
+  const updateProfile = useCallback(
+    async (updates: Partial<Pick<AuthUser, 'name' | 'email'>>): Promise<MutationResult> => {
+      const result = await authApi.updateProfile(updates);
+      if (!result.ok || !result.data) {
+        return { ok: false, error: result.error ?? 'Could not save your profile.' };
+      }
+      setUser(result.data);
+      return { ok: true };
+    },
+    [],
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<MutationResult> => {
+      const result = await authApi.changePassword(currentPassword, newPassword);
+      if (!result.ok) {
+        return { ok: false, error: result.error ?? 'Could not change your password.' };
+      }
+      return { ok: true };
+    },
+    [],
+  );
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       isAuthenticated: user !== null,
       isLoading,
-      login: (email, password) => {
-        const normalizedEmail = email.trim().toLowerCase();
-
-        if (normalizedEmail !== DEMO_EMAIL) {
-          return { ok: false, error: 'No account found for that email address.' };
-        }
-        if (password !== demoPasswordStore.getSnapshot()) {
-          return { ok: false, error: 'Incorrect password. Please try again.' };
-        }
-
-        const nextUser = { ...DEFAULT_USER, email: DEMO_EMAIL };
-        writeStorage(STORAGE_KEYS.auth, nextUser);
-        setUser(nextUser);
-        return { ok: true };
-      },
-      logout: () => {
-        removeStorage(STORAGE_KEYS.auth);
-        setUser(null);
-      },
-      updateProfile: (updates) => {
-        setUser((current) => {
-          if (!current) return current;
-          const next = { ...current, ...updates };
-          writeStorage(STORAGE_KEYS.auth, next);
-          return next;
-        });
-      },
+      login,
+      logout,
+      updateProfile,
+      changePassword,
     }),
-    [user, isLoading],
+    [user, isLoading, login, logout, updateProfile, changePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

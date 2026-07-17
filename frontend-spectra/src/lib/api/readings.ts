@@ -31,6 +31,9 @@ export async function fetchDeviceReadings(params: FetchReadingsParams = {}): Pro
 
     const response = await fetch(url.toString(), {
       cache: 'no-store',
+      // Readings now require a session; without the cookie this 401s and the
+      // panel falls back to demo data.
+      credentials: 'include',
       signal: AbortSignal.timeout(4000),
     });
 

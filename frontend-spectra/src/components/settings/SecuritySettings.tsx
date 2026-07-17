@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useSyncExternalStore, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
-import { demoPasswordStore } from '../../lib/auth';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Card, CardHeader } from '../ui/Card';
@@ -18,12 +17,7 @@ interface FormErrors {
 }
 
 export function SecuritySettings() {
-  const currentPassword = useSyncExternalStore(
-    demoPasswordStore.subscribe,
-    demoPasswordStore.getSnapshot,
-    demoPasswordStore.getServerSnapshot,
-  );
-  const { logout } = useAuth();
+  const { logout, changePassword } = useAuth();
   const { showToast } = useToast();
   const router = useRouter();
 
@@ -32,13 +26,15 @@ export function SecuritySettings() {
   const [confirm, setConfirm] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const nextErrors: FormErrors = {};
 
+    // The current password is verified by the backend — the browser has no
+    // copy of it to check against.
     if (!current) nextErrors.current = 'Enter your current password.';
-    else if (current !== currentPassword) nextErrors.current = 'Current password is incorrect.';
 
     if (!next) nextErrors.next = 'Enter a new password.';
     else if (next.length < 8) nextErrors.next = 'Password must be at least 8 characters.';
@@ -49,15 +45,23 @@ export function SecuritySettings() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    demoPasswordStore.set(next);
+    setSubmitting(true);
+    const result = await changePassword(current, next);
+    setSubmitting(false);
+
+    if (!result.ok) {
+      setErrors({ current: result.error ?? 'Could not change your password.' });
+      return;
+    }
+
     setCurrent('');
     setNext('');
     setConfirm('');
     showToast('Password updated successfully', 'success');
   };
 
-  const handleSignOutEverywhere = () => {
-    logout();
+  const handleSignOutEverywhere = async () => {
+    await logout();
     router.push('/login');
   };
 
@@ -65,7 +69,7 @@ export function SecuritySettings() {
     <>
       <Card>
         <CardHeader title="Change Password" subtitle="Choose a strong password you don't use elsewhere." />
-        <form className={styles.form} onSubmit={handleSubmit}>
+        <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
           <Input
             label="Current password"
             type={showPasswords ? 'text' : 'password'}
@@ -102,7 +106,9 @@ export function SecuritySettings() {
             }
           />
           <div className={styles.actionsRow}>
-            <Button type="submit">Change Password</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? 'Changing…' : 'Change Password'}
+            </Button>
           </div>
         </form>
       </Card>
@@ -111,7 +117,7 @@ export function SecuritySettings() {
         <CardHeader title="Session" subtitle="Manage where you're signed in." />
         <p className={styles.helperText}>Signing out will end your current session and return you to the login screen.</p>
         <div className={styles.actionsRow}>
-          <Button variant="danger" onClick={handleSignOutEverywhere}>
+          <Button variant="danger" onClick={() => void handleSignOutEverywhere()}>
             Sign out
           </Button>
         </div>

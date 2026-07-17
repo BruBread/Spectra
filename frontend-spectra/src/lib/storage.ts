@@ -26,9 +26,9 @@ export function removeStorage(key: string): void {
   }
 }
 
+// Authentication is no longer stored here: the session lives in an HTTP-only
+// cookie issued by the backend, which JavaScript deliberately cannot read.
 export const STORAGE_KEYS = {
-  auth: 'spectra-auth',
-  demoPassword: 'spectra-demo-password',
   theme: 'spectra-theme',
   customers: 'spectra-customers',
   logs: 'spectra-logs',

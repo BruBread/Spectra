@@ -1,23 +1,17 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { SpectraLogo } from '../../components/ui/SpectraLogo';
-import { DEMO_EMAIL, demoPasswordStore } from '../../lib/auth';
 import styles from './login.module.css';
 
 export default function LoginPage() {
   const { login, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
-  const demoPassword = useSyncExternalStore(
-    demoPasswordStore.subscribe,
-    demoPasswordStore.getSnapshot,
-    demoPasswordStore.getServerSnapshot,
-  );
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +26,7 @@ export default function LoginPage() {
     }
   }, [isLoading, isAuthenticated, router]);
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setFormError(null);
 
@@ -49,7 +43,7 @@ export default function LoginPage() {
     if (Object.keys(errors).length > 0) return;
 
     setSubmitting(true);
-    const result = login(email, password);
+    const result = await login(email, password);
     setSubmitting(false);
 
     if (!result.ok) {
@@ -69,7 +63,7 @@ export default function LoginPage() {
         <h1 className={styles.title}>Welcome back</h1>
         <p className={styles.subtitle}>Sign in to monitor cameras, alerts and customers.</p>
 
-        <form className={styles.form} onSubmit={handleSubmit} noValidate>
+        <form className={styles.form} onSubmit={(event) => void handleSubmit(event)} noValidate>
           {formError ? (
             <div className={styles.formError} role="alert" aria-live="assertive">
               {formError}
@@ -114,9 +108,10 @@ export default function LoginPage() {
         <div className={styles.demoHint}>
           <ShieldCheck size={16} aria-hidden="true" />
           <div>
-            <p className={styles.demoTitle}>Demo credentials</p>
+            <p className={styles.demoTitle}>Secure sign-in</p>
             <p>
-              {DEMO_EMAIL} / {demoPassword}
+              Use the admin account seeded from your backend environment (ADMIN_EMAIL / ADMIN_PASSWORD) — see the
+              README.
             </p>
           </div>
         </div>

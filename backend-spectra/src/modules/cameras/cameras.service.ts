@@ -16,12 +16,12 @@ interface CreateCameraInput {
   detectionEnabled?: boolean;
 }
 
-export function createCamera(input: CreateCameraInput) {
-  return Camera.create(input);
+export function createCamera(input: CreateCameraInput, actorId: string) {
+  return Camera.create({ ...input, createdBy: actorId, updatedBy: actorId });
 }
 
-export function updateCamera(id: string, updates: Partial<CreateCameraInput>) {
-  return Camera.findByIdAndUpdate(id, { $set: updates }, { new: true });
+export function updateCamera(id: string, updates: Partial<CreateCameraInput>, actorId: string) {
+  return Camera.findByIdAndUpdate(id, { $set: { ...updates, updatedBy: actorId } }, { new: true });
 }
 
 export function deleteCamera(id: string) {

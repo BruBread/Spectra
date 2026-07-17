@@ -58,7 +58,10 @@ Key variables — see `backend-spectra/.env.example` for the full list:
 | `APP_ENV` | Selects which `.env.*` file to load |
 | `PORT` | HTTP port (default `4000`) |
 | `MONGODB_URI` | MongoDB connection string |
-| `CORS_ORIGIN` | Allowed frontend origin |
+| `CORS_ORIGIN` | Allowed frontend origin(s), comma-separated. Cannot be `*` with cookie auth — see [Authentication](#authentication) |
+| `SESSION_SECRET` | Signs the session cookie. Required in production |
+| `SESSION_COOKIE_NAME`, `SESSION_TTL_HOURS`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` | Session cookie config |
+| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap admin, seeded only when no user exists |
 | `TTN_WEBHOOK_SECRET` / `CHIRPSTACK_WEBHOOK_SECRET` | Shared secrets verified on inbound LoRaWAN webhooks |
 | `MQTT_ENABLED`, `MQTT_PROVIDER`, `MQTT_BROKER_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TOPIC` | Optional MQTT client config |
 
@@ -101,8 +104,102 @@ npm install
 npm run dev
 ```
 
-- Backend runs at `http://127.0.0.1:4000`
+- Backend runs at `http://localhost:4000`
 - Frontend runs at `http://localhost:3000`
+
+Sign in with the admin account seeded from the backend's `ADMIN_EMAIL` /
+`ADMIN_PASSWORD` — see [Authentication](#authentication).
+
+> Use `localhost` (not `127.0.0.1`) for `NEXT_PUBLIC_API_BASE_URL`. Browsers
+> treat `localhost` and `127.0.0.1` as different sites, so mixing them makes
+> the session cookie cross-site and it gets dropped.
+
+## Authentication
+
+All admin API routes require an authenticated session. The frontend has no
+client-side login of its own — it asks the backend who is signed in.
+
+**Mechanism.** Server-side sessions (`express-session` + `connect-mongo`,
+stored in the `sessions` collection) behind an **HTTP-only** cookie, so a
+page script can never read the session, and signing out genuinely destroys it
+server-side. Passwords are hashed with **scrypt** from node's standard library
+(N=2^16, r=8, p=1), stored self-describing as `scrypt$N$r$p$salt$key` so the
+cost can be raised later without invalidating existing passwords. The session
+id is regenerated on login and on password change.
+
+**Roles.** These govern the admin console and are deliberately separate from
+the monitored-person roles (faculty, student, guard, …) of a later phase.
+
+| Role | May do |
+|---|---|
+| `admin` | Everything: manage cameras, detection settings, AprilTag mappings, and (later) people, roles, credentials, and policies |
+| `operator` | View cameras, alerts, notifications and device readings; submit detections; acknowledge/review/resolve alerts |
+
+Unauthenticated requests get `401`; authenticated-but-not-permitted get `403`.
+
+**Exceptions that stay public, by design:** `GET /api/health` (liveness
+checks) and the LoRaWAN webhooks (`POST /api/lorawan/webhook/*`), which are
+machine-to-machine and authenticate with `X-Webhook-Secret` instead — a
+network server has no browser session.
+
+### Local setup
+
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend-spectra/.env.local` seed the
+first admin **only when the users collection is empty**, so restarting never
+resets a real account. `.env.local.example` ships with
+`admin@spectra.com` / `spectra123` for local development. Credentials live in
+env files (gitignored) and never in committed source.
+
+To reset the demo account, delete the user and restart the backend:
+
+```bash
+mongosh spectra_local --eval 'db.users.deleteMany({})'
+```
+
+For any real deployment: set a unique `SESSION_SECRET`
+(`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`),
+set an explicit `CORS_ORIGIN`, and change the seeded password after first
+sign-in. Production refuses to boot with a default/missing `SESSION_SECRET`
+or a wildcard `CORS_ORIGIN`.
+
+### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/auth/login` | `{ email, password }` → user; sets the session cookie |
+| `POST` | `/api/auth/logout` | Destroys the session |
+| `GET` | `/api/auth/me` | Current user, or `401` when signed out |
+| `PATCH` | `/api/auth/me` | `{ name?, email? }` |
+| `POST` | `/api/auth/change-password` | `{ currentPassword, newPassword }` (min 8 chars) |
+
+### Testing it locally
+
+```bash
+# 401 until you sign in
+curl -i http://localhost:4000/api/cameras
+
+# sign in and keep the cookie
+curl -c jar.txt -X POST http://localhost:4000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@spectra.com","password":"spectra123"}'
+
+# now authorized
+curl -b jar.txt http://localhost:4000/api/auth/me
+curl -b jar.txt http://localhost:4000/api/cameras
+
+# sign out; the same cookie stops working
+curl -b jar.txt -X POST http://localhost:4000/api/auth/logout
+curl -i -b jar.txt http://localhost:4000/api/cameras
+```
+
+Health and webhooks stay reachable without a session:
+
+```bash
+curl http://localhost:4000/api/health
+curl -X POST http://localhost:4000/api/lorawan/webhook/ttn \
+  -H 'X-Webhook-Secret: local-ttn-webhook-secret' \
+  -H 'Content-Type: application/json' -d '{}'
+```
 
 ## LoRaWAN ingest module
 
@@ -133,15 +230,68 @@ broker and subscribe to uplinks instead of (or alongside) the webhook.
 ### Reading stored data
 
 `GET {API_BASE_URL}/api/lorawan/readings?deviceId=<id>&limit=<n>` returns the
-most recent readings, newest first — this is what the iOS app (or the
-frontend) should call to display device data.
+most recent readings, newest first. See
+[Device readings access](#device-readings-access) for who may call it.
+
+### Device readings access
+
+This endpoint was public before authentication existed, and the separately
+built iOS app already calls it with no credential. It now accepts three kinds
+of caller. The webhooks above are unaffected — they authenticate with
+`X-Webhook-Secret`.
+
+| Caller | Credential | Scope |
+|---|---|---|
+| Admin console | Session cookie (`admin` or `operator`) | Full, including listing all devices |
+| Mobile/device client | `X-Api-Key: <MOBILE_API_KEY>` | **Must** pass `?deviceId=` — cannot list all devices |
+| Anonymous | none, only if `LORAWAN_READINGS_ALLOW_ANONYMOUS=true` | Full — **off by default** |
+
+```bash
+# scoped key access (matches the documented iOS call shape)
+curl -H 'X-Api-Key: local-mobile-api-key' \
+  'http://localhost:4000/api/lorawan/readings?deviceId=abc-123&limit=10'
+```
+
+Admin-only operations are unaffected: the key grants nothing beyond reading
+readings, and never reaches cameras, vision, or settings.
+
+#### Security limitation (read before shipping)
+
+**`MOBILE_API_KEY` is a temporary bridge, not the design.** It is a single
+static shared secret. Anyone who extracts it from a shipped app binary can
+read any device's readings by knowing a device id. It authenticates *"some
+copy of the mobile app"*, not *"this guest"*, and cannot express which devices
+a given guest is entitled to. Requiring `deviceId` limits blast radius (no
+bulk dump) but is not authorization.
+
+`LORAWAN_READINGS_ALLOW_ANONYMOUS=true` is weaker still — it restores the
+old fully-public behavior for an already-deployed client that cannot yet send
+a credential. Use it only as a stopgap during a migration window, prefer the
+key, and never leave it on in production.
+
+#### Required follow-up
+
+Replace both with per-guest authentication issuing short-lived tokens that
+carry the guest's authorized device scope, once person/credential records and
+wristband assignment exist. The scope check belongs at the same place the
+`deviceId` check lives today (`readings.auth.ts`): swap "a deviceId is
+present" for "this device is in the caller's authorized set", then retire the
+shared key and the anonymous flag.
+
+Until the iOS app ships a build that sends `X-Api-Key`, either set
+`LORAWAN_READINGS_ALLOW_ANONYMOUS=true` for the migration window, or accept
+that it cannot read readings. The backend warns at boot about whichever
+posture is in effect, so this never fails silently.
 
 ## Vision alerts API
 
 Location: `backend-spectra/src/modules/vision/`
 
 Alerts are AI-assisted signals for a human to review — never a confirmed
-incident. Endpoints are under `{API_BASE_URL}/api/vision`.
+incident. Endpoints are under `{API_BASE_URL}/api/vision` and all require an
+authenticated session. Reading and triaging alerts is open to `operator` and
+`admin`; changing detection settings and AprilTag mappings is `admin` only
+(see [Authentication](#authentication)).
 
 ### Alert shape
 

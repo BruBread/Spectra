@@ -15,6 +15,8 @@ const cameraSchema = new Schema(
     preferredDeviceId: { type: String, default: null },
     preferredDeviceLabel: { type: String, default: null },
     detectionEnabled: { type: Boolean, default: false },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },
 );

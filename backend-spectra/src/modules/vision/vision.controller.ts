@@ -73,11 +73,15 @@ export async function getSettings(req: Request, res: Response, next: NextFunctio
 export async function putSettings(req: Request, res: Response, next: NextFunction) {
   try {
     const cameraId = typeof req.body.cameraId === 'string' ? req.body.cameraId : DEFAULT_CAMERA_ID;
-    const settings = await visionService.replaceSettings(cameraId, {
-      processingIntervalMs: req.body.processingIntervalMs,
-      retentionDays: req.body.retentionDays,
-      detectors: req.body.detectors,
-    });
+    const settings = await visionService.replaceSettings(
+      cameraId,
+      {
+        processingIntervalMs: req.body.processingIntervalMs,
+        retentionDays: req.body.retentionDays,
+        detectors: req.body.detectors,
+      },
+      req.user!.id,
+    );
     res.json(settings);
   } catch (error) {
     next(error);
@@ -100,7 +104,7 @@ export async function createAprilTagMapping(req: Request, res: Response, next: N
       res.status(400).json({ error: 'tagId (number), label, and loraDeviceId are required' });
       return;
     }
-    const mapping = await visionService.createAprilTagMapping({ tagId, label, loraDeviceId, notes });
+    const mapping = await visionService.createAprilTagMapping({ tagId, label, loraDeviceId, notes }, req.user!.id);
     res.status(201).json(mapping);
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
@@ -113,7 +117,13 @@ export async function createAprilTagMapping(req: Request, res: Response, next: N
 
 export async function updateAprilTagMapping(req: Request, res: Response, next: NextFunction) {
   try {
-    const mapping = await visionService.updateAprilTagMapping(String(req.params.id), req.body);
+    const { label, loraDeviceId, notes } = req.body ?? {};
+    const updates = {
+      ...(label !== undefined && { label }),
+      ...(loraDeviceId !== undefined && { loraDeviceId }),
+      ...(notes !== undefined && { notes }),
+    };
+    const mapping = await visionService.updateAprilTagMapping(String(req.params.id), updates, req.user!.id);
     if (!mapping) {
       res.status(404).json({ error: 'Mapping not found' });
       return;
@@ -217,7 +227,7 @@ export async function updateAlertStatus(req: Request, res: Response, next: NextF
       return;
     }
 
-    const alert = await visionService.setAlertStatus(String(req.params.id), status);
+    const alert = await visionService.setAlertStatus(String(req.params.id), status, req.user!.id);
     if (!alert) {
       res.status(404).json({ error: 'Alert not found' });
       return;
@@ -259,7 +269,7 @@ export async function markAllAlertsRead(_req: Request, res: Response, next: Next
 /** Legacy endpoint — superseded by updateAlertStatus, kept so existing clients keep working. */
 export async function acknowledgeAlert(req: Request, res: Response, next: NextFunction) {
   try {
-    const alert = await visionService.acknowledgeAlert(String(req.params.id));
+    const alert = await visionService.acknowledgeAlert(String(req.params.id), req.user!.id);
     if (!alert) {
       res.status(404).json({ error: 'Alert not found' });
       return;

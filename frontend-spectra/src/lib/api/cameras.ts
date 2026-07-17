@@ -1,39 +1,6 @@
 import type { CameraRecord, NewCameraInput } from '../cameras/types';
-import type { ApiResult } from './vision';
-
-function apiBase(): string | null {
-  return process.env.NEXT_PUBLIC_API_BASE_URL ?? null;
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
-  const base = apiBase();
-  if (!base) {
-    return { data: null, ok: false, error: 'NEXT_PUBLIC_API_BASE_URL is not configured.' };
-  }
-
-  try {
-    const response = await fetch(new URL(path, base).toString(), {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(6000),
-      headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
-      ...init,
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      return { data: null, ok: false, error: body?.error ?? `Request failed (${response.status})` };
-    }
-
-    if (response.status === 204) {
-      return { data: null, ok: true };
-    }
-
-    const data = (await response.json()) as T;
-    return { data, ok: true };
-  } catch (error) {
-    return { data: null, ok: false, error: error instanceof Error ? error.message : 'Network error' };
-  }
-}
+import type { ApiResult } from './client';
+import { request } from './client';
 
 function normalizeCamera(raw: Record<string, unknown>): CameraRecord {
   return {

@@ -37,6 +37,7 @@ export async function getSettings(cameraId: string) {
 export async function replaceSettings(
   cameraId: string,
   update: { processingIntervalMs?: number; retentionDays?: number; detectors?: unknown },
+  actorId: string,
 ) {
   const settings = await VisionSettings.findOneAndUpdate(
     { cameraId },
@@ -45,6 +46,7 @@ export async function replaceSettings(
         ...(update.processingIntervalMs !== undefined && { processingIntervalMs: update.processingIntervalMs }),
         ...(update.retentionDays !== undefined && { retentionDays: update.retentionDays }),
         ...(update.detectors !== undefined && { detectors: update.detectors }),
+        updatedBy: actorId,
       },
     },
     { new: true, upsert: true, setDefaultsOnInsert: true },
@@ -56,12 +58,19 @@ export function listAprilTagMappings() {
   return AprilTagMapping.find().sort({ tagId: 1 });
 }
 
-export function createAprilTagMapping(data: { tagId: number; label: string; loraDeviceId: string; notes?: string }) {
-  return AprilTagMapping.create(data);
+export function createAprilTagMapping(
+  data: { tagId: number; label: string; loraDeviceId: string; notes?: string },
+  actorId: string,
+) {
+  return AprilTagMapping.create({ ...data, createdBy: actorId, updatedBy: actorId });
 }
 
-export function updateAprilTagMapping(id: string, data: Partial<{ label: string; loraDeviceId: string; notes: string }>) {
-  return AprilTagMapping.findByIdAndUpdate(id, { $set: data }, { new: true });
+export function updateAprilTagMapping(
+  id: string,
+  data: Partial<{ label: string; loraDeviceId: string; notes: string }>,
+  actorId: string,
+) {
+  return AprilTagMapping.findByIdAndUpdate(id, { $set: { ...data, updatedBy: actorId } }, { new: true });
 }
 
 export function deleteAprilTagMapping(id: string) {
@@ -208,8 +217,13 @@ export async function createAlert(input: CreateAlertInput) {
  * Moving an alert out of `new` also marks it read: a human had to look at it
  * to triage it, so leaving it in the unread badge would just double the work.
  */
-export function setAlertStatus(id: string, status: AlertStatus) {
-  const update: Record<string, unknown> = { status, acknowledged: acknowledgedForStatus(status) };
+export function setAlertStatus(id: string, status: AlertStatus, actorId: string) {
+  const update: Record<string, unknown> = {
+    status,
+    acknowledged: acknowledgedForStatus(status),
+    statusChangedBy: actorId,
+    statusChangedAt: new Date(),
+  };
   if (status !== 'new') {
     update.read = true;
   }
@@ -226,6 +240,6 @@ export async function markAllAlertsRead() {
 }
 
 /** Legacy path kept for the existing `PATCH /alerts/:id` endpoint. */
-export function acknowledgeAlert(id: string) {
-  return setAlertStatus(id, 'acknowledged');
+export function acknowledgeAlert(id: string, actorId: string) {
+  return setAlertStatus(id, 'acknowledged', actorId);
 }

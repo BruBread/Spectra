@@ -29,6 +29,7 @@ const visionSettingsSchema = new Schema(
     processingIntervalMs: { type: Number, required: true, default: 500 },
     retentionDays: { type: Number, required: true, default: 14 },
     detectors: { type: [detectionTypeConfigSchema], default: [] },
+    updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },
 );
@@ -41,6 +42,8 @@ const aprilTagMappingSchema = new Schema(
     label: { type: String, required: true },
     loraDeviceId: { type: String, required: true },
     notes: { type: String },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },
 );
@@ -64,6 +67,9 @@ const visionAlertSchema = new Schema(
     lastOccurredAt: { type: Date, required: true, default: Date.now },
     /** Legacy flag, kept in sync with `status` — see acknowledgedForStatus(). */
     acknowledged: { type: Boolean, default: false },
+    /** Who triaged this alert, and when. Detections themselves are machine-created. */
+    statusChangedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    statusChangedAt: { type: Date, default: null },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

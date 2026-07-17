@@ -38,8 +38,8 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
 
   const unreadCount = notifications.filter((notification) => !notification.read).length;
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push('/login');
   };
 
@@ -138,7 +138,7 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
               >
                 <SettingsIcon size={16} aria-hidden="true" /> Settings
               </DropdownItem>
-              <DropdownItem danger onClick={handleLogout}>
+              <DropdownItem danger onClick={() => void handleLogout()}>
                 <LogOut size={16} aria-hidden="true" /> Logout
               </DropdownItem>
             </>

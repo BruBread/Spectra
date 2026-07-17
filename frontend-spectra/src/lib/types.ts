@@ -60,10 +60,20 @@ export interface AppSettings {
   detection: DetectionSettings;
 }
 
+/**
+ * Admin-console roles, mirroring the backend's AdminRole. Separate from the
+ * monitored-person roles (faculty, student, …) of the later identity phase.
+ */
+export type AdminRole = 'admin' | 'operator';
+
+/** Mirrors the backend's PublicUser shape from `GET /api/auth/me`. */
 export interface AuthUser {
+  id: string;
   name: string;
   email: string;
-  role: string;
+  role: AdminRole;
+  active: boolean;
+  lastLoginAt: string | null;
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';

@@ -28,24 +28,49 @@ export async function createCamera(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const camera = await camerasService.createCamera({
-      name,
-      location,
-      zone,
-      sourceType,
-      streamUrl,
-      preferredDeviceId,
-      preferredDeviceLabel,
-    });
+    const camera = await camerasService.createCamera(
+      {
+        name,
+        location,
+        zone,
+        sourceType,
+        streamUrl,
+        preferredDeviceId,
+        preferredDeviceLabel,
+      },
+      req.user!.id,
+    );
     res.status(201).json(camera);
   } catch (error) {
     next(error);
   }
 }
 
+/**
+ * Only these may be set from a request body — passing the raw body through
+ * would let a client write audit fields like createdBy.
+ */
+const UPDATABLE_CAMERA_FIELDS = [
+  'name',
+  'location',
+  'zone',
+  'sourceType',
+  'streamUrl',
+  'preferredDeviceId',
+  'preferredDeviceLabel',
+  'detectionEnabled',
+] as const;
+
 export async function updateCamera(req: Request, res: Response, next: NextFunction) {
   try {
-    const camera = await camerasService.updateCamera(String(req.params.id), req.body);
+    const updates: Record<string, unknown> = {};
+    for (const field of UPDATABLE_CAMERA_FIELDS) {
+      if (req.body?.[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    }
+
+    const camera = await camerasService.updateCamera(String(req.params.id), updates, req.user!.id);
     if (!camera) {
       res.status(404).json({ error: 'Camera not found' });
       return;

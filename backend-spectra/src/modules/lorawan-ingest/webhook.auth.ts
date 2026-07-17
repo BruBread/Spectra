@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
-function isValidSecret(provided: string | undefined, expected: string): boolean {
+/** Constant-time secret comparison, shared with readings.auth.ts. */
+export function isValidSecret(provided: string | undefined, expected: string): boolean {
   if (!provided || !expected) return false;
   const providedBuf = Buffer.from(provided);
   const expectedBuf = Buffer.from(expected);
