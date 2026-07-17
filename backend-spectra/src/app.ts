@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import session from 'express-session';
 import MongoStore from 'connect-mongo';
+import mongoose from 'mongoose';
 import { env } from './config/env.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
@@ -38,7 +39,11 @@ export function createApp() {
       resave: false,
       saveUninitialized: false,
       store: MongoStore.create({
-        mongoUrl: env.mongodbUri,
+        // Reuses the connection opened by connectToDatabase() rather than
+        // dialing a second one: one pool to manage, and closing mongoose
+        // closes the session store with it. createApp() must therefore run
+        // after the database connection is established.
+        client: mongoose.connection.getClient(),
         collectionName: 'sessions',
         ttl: env.session.ttlHours * 3600,
       }),

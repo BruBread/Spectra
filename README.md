@@ -203,6 +203,66 @@ curl -X POST http://localhost:4000/api/lorawan/webhook/ttn \
   -H 'Content-Type: application/json' -d '{}'
 ```
 
+## Tests
+
+Both suites are self-contained: they need **no running dev stack, no
+installed MongoDB, no cameras and no hardware**, and they start whatever they
+need themselves.
+
+```bash
+cd backend-spectra && npm test        # API + auth + alerts (node:test)
+cd frontend-spectra && npm run test:e2e   # browser end-to-end (Playwright)
+```
+
+| Command | Where | What it does |
+|---|---|---|
+| `npm test` | `backend-spectra` | Runs `test/**/*.test.ts` on Node's built-in test runner |
+| `npm run test:watch` | `backend-spectra` | The same, re-running on change |
+| `npm run typecheck:test` | `backend-spectra` | Typechecks `src` **and** `test` (the default `typecheck` covers `src` only) |
+| `npm run test:e2e` | `frontend-spectra` | Playwright; starts its own backend + frontend |
+| `npm run test:e2e:ui` | `frontend-spectra` | The same in Playwright's watch UI |
+
+First e2e run only: `npx playwright install chromium` to fetch the browser.
+
+### Isolation
+
+**Tests never touch your local database.** Each run starts a throwaway
+in-memory MongoDB (`mongodb-memory-server`) and points the app at it, so
+`spectra_local` — your real cameras, alerts and admin account — is
+unreachable by construction rather than by convention. The database is
+discarded when the run ends.
+
+All fixtures are created by the tests themselves (obviously synthetic:
+`test-camera-alpha`, `e2e-admin@example.test`) and no assertion depends on
+any pre-existing record.
+
+The e2e run starts its own backend on **4100** and frontend on **3100**, so a
+dev stack on 3000/4000 can keep running. It builds into `.next-e2e` because
+Next allows only one dev server per build directory.
+
+### Layout
+
+```
+backend-spectra/test/
+├── support/testServer.ts   in-memory Mongo + the real app on an ephemeral port
+├── support/e2eServer.ts    the backend Playwright starts (+ a test-only reset)
+├── support/factories.ts    seeded, test-owned fixtures
+├── auth.test.ts            authentication, session lifecycle, operator vs admin
+├── alerts.test.ts          lifecycle, filtering, counts, read state, grouping
+├── readings.test.ts        session / scoped key / anonymous-blocked access
+├── readings.anonymous.test.ts   the compatibility flag enabled
+└── config.guards.test.ts   production refuses development-only settings
+
+frontend-spectra/e2e/
+├── support/api.ts          login + fixture seeding through the real API
+├── auth.spec.ts            login, session, logout
+└── notifications.spec.ts   real alerts, filters, actions, counts, empty/error states
+```
+
+Each `node:test` file runs in its own process, which is how the differing
+environments (anonymous reads on vs off) stay isolated — `src/config/env.ts`
+reads the environment once at import.
+
 ## LoRaWAN ingest module
 
 Location: `backend-spectra/src/modules/lorawan-ingest/`

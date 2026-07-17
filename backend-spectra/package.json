@@ -10,7 +10,11 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "test:watch": "node --import tsx --test --watch \"test/**/*.test.ts\"",
+    "test:e2e-server": "tsx test/support/e2eServer.ts"
   },
   "dependencies": {
     "connect-mongo": "^6.0.0",
@@ -29,6 +33,7 @@
     "@types/express-session": "^1.19.0",
     "@types/morgan": "^1.9.10",
     "@types/node": "^26.1.1",
+    "mongodb-memory-server": "^11.2.0",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2"
   }
