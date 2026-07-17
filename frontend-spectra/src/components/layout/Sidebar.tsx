@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Bell, Camera, Home, LogOut, ScrollText, Settings, Users, Video, X } from 'lucide-react';
+import { Bell, Camera, Home, LogOut, ScrollText, Settings, ShieldCheck, Users, Video, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/format';
 import { SpectraLogo } from '../ui/SpectraLogo';
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: '/cameras', label: 'Cameras', icon: Camera },
   { href: '/monitor', label: 'Live Monitor', icon: Video },
   { href: '/notifications', label: 'Notifications', icon: Bell },
+  { href: '/access-control', label: 'Access Control', icon: ShieldCheck },
   { href: '/logs', label: 'Logs', icon: ScrollText },
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/settings', label: 'Settings', icon: Settings },

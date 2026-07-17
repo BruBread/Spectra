@@ -9,10 +9,21 @@ import styles from './ZoneDrawer.module.css';
 interface ZoneDrawerProps {
   zone: Zone | null;
   backgroundImage: string | null;
+  /**
+   * What an empty selection means, which depends on the caller: a detector's
+   * zone of interest falls back to the whole frame, while a named restricted
+   * zone has no meaning without a rectangle.
+   */
+  hint?: string;
   onChange: (zone: Zone | null) => void;
 }
 
-export function ZoneDrawer({ zone, backgroundImage, onChange }: ZoneDrawerProps) {
+export function ZoneDrawer({
+  zone,
+  backgroundImage,
+  hint = 'Click and drag to draw the zone. Leave empty to apply to the whole frame.',
+  onChange,
+}: ZoneDrawerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragStart, setDragStart] = useState<[number, number] | null>(null);
   const [draft, setDraft] = useState<Zone | null>(zone);
@@ -81,7 +92,7 @@ export function ZoneDrawer({ zone, backgroundImage, onChange }: ZoneDrawerProps)
         ) : null}
       </div>
       <div className={styles.actions}>
-        <p className={styles.hint}>Click and drag to draw the zone. Leave empty to apply to the whole frame.</p>
+        <p className={styles.hint}>{hint}</p>
         {draft ? (
           <Button size="sm" variant="ghost" onClick={clear}>
             <Trash2 size={14} aria-hidden="true" /> Clear zone

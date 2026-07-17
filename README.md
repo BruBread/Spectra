@@ -251,13 +251,21 @@ backend-spectra/test/
 ├── alerts.test.ts          lifecycle, filtering, counts, read state, grouping
 ├── readings.test.ts        session / scoped key / anonymous-blocked access
 ├── readings.anonymous.test.ts   the compatibility flag enabled
-└── config.guards.test.ts   production refuses development-only settings
+├── config.guards.test.ts   production refuses development-only settings
+├── identity.test.ts        roles, people, credential uniqueness, LoRa listing
+├── zones.test.ts           zone CRUD, rectangle validation, archive vs delete
+└── policyDecisions.test.ts the read-only audit API and its storage shape
 
 frontend-spectra/e2e/
 ├── support/api.ts          login + fixture seeding through the real API
 ├── auth.spec.ts            login, session, logout
-└── notifications.spec.ts   real alerts, filters, actions, counts, empty/error states
+├── notifications.spec.ts   real alerts, filters, actions, counts, empty/error states
+└── access-control.spec.ts  people, roles, zones, decision log, operator read-only
 ```
+
+The e2e backend seeds the two roles a real deployment boots with (and
+re-seeds them after each reset), plus a second **operator** account — the API
+has no user-creation endpoint, so the read-only specs need one seeded.
 
 Each `node:test` file runs in its own process, which is how the differing
 environments (anonymous reads on vs off) stay isolated — `src/config/env.ts`
@@ -362,6 +370,59 @@ human-readable reason and an optional alert reference. That is deliberate: a
 trace it ever happened and has to stand on its own.
 
 Nothing writes these yet.
+
+## Access Control (admin UI)
+
+`/access-control` in the admin site is the front end for everything in
+[Identity, zones and policy](#identity-zones-and-policy-backend). It is
+**configuration only**: no detector reads a zone and no policy engine reads a
+permission, so nothing configured here changes what the cameras do today. The
+UI says so on the Roles and Zones tabs rather than leaving it to be assumed.
+
+Four tabs, each selectable via `?tab=` so a view can be linked to:
+
+| Tab | Backed by |
+|---|---|
+| People | `/api/people`, `/api/roles`, `/api/lora-devices` |
+| Roles | `/api/roles`, `/api/zones` |
+| Restricted Zones | `/api/zones`, `/api/roles`, `/api/cameras` |
+| Decision Log | `/api/policy-decisions` |
+
+Every screen reads a real authenticated endpoint. There is no mock data, no
+localStorage fallback, and no fabricated device, person or zone. A failed
+request shows an error state — never an empty list, which would read as "there
+is nothing" when the truth is "we could not ask".
+
+**Permissions.** Mutation controls render only for an `admin`; an `operator`
+sees the data with a read-only notice and no write controls, matching the
+admin-only mutation routes on the backend.
+
+**People.** Each person shows whether they have an AprilTag, a LoRa device,
+both, or neither, and the UI states what that combination means: only a
+readable, registered AprilTag lets a camera recognize someone and apply their
+role. A LoRa device corroborates that a registered wristband is active nearby
+— it never identifies the person in a frame and grants no permissions. The
+LoRa picker lists the real `/api/lora-devices` result with assignment state;
+manual entry exists for hardware that has not reported yet, which is the only
+device-registration flow the backend has.
+
+**Roles.** Zone permission controls appear only once a zone exists — an empty
+permission list would otherwise look like a decision rather than an absence.
+There is **no weapon-exemption control**, because nothing enforces one yet; if
+a role has the flag set through the API it is shown read-only and labelled as
+unenforced, since hiding a permission that exists is worse than showing an
+inert one. Only `allowed` entries are stored: the backend treats an absent
+zone as denied, so an explicit `allowed: false` row would mean the same thing
+while implying a distinction that isn't there.
+
+**Zones.** Rectangles are drawn with the same `ZoneDrawer` the Live Monitor
+uses. This page doesn't run the vision pipeline, so it shows the grid rather
+than a stale or fabricated frame preview. A zone's camera is fixed after
+creation, mirroring the backend rule.
+
+**Decision Log.** Read-only, and empty until the policy engine that writes
+decisions ships. The empty state says exactly that. Nothing here is ever
+simulated.
 
 ## LoRaWAN ingest module
 

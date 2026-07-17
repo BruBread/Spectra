@@ -15,6 +15,15 @@ const FRONTEND_ORIGIN = process.env.E2E_FRONTEND_ORIGIN ?? 'http://localhost:310
 
 export const E2E_ADMIN = { email: 'e2e-admin@example.test', password: 'e2e-admin-pw-1', name: 'E2E Admin' };
 
+/**
+ * A second, non-admin account.
+ *
+ * The API has no user-creation endpoint — accounts are seeded from the
+ * environment — so the operator the read-only specs sign in as has to be
+ * created here, against the same throwaway database.
+ */
+export const E2E_OPERATOR = { email: 'e2e-operator@example.test', password: 'e2e-operator-pw-1', name: 'E2E Operator' };
+
 async function main() {
   const mongo = await MongoMemoryServer.create();
   const uri = mongo.getUri('spectra_e2e');
@@ -44,7 +53,13 @@ async function main() {
   await mongoose.connect(uri);
 
   const { seedAdminUser } = await import('../../src/modules/auth/auth.seed.js');
+  const { seedRoles } = await import('../../src/modules/identity/identity.seed.js');
+  const authService = await import('../../src/modules/auth/auth.service.js');
   await seedAdminUser();
+  await authService.createUser({ ...E2E_OPERATOR, role: 'operator' });
+  // Mirrors server.ts: a real deployment always boots with the two seeded
+  // roles, so the UI under test must face the same starting state.
+  await seedRoles();
 
   const { createApp } = await import('../../src/app.js');
 
@@ -58,6 +73,10 @@ async function main() {
    * Alerts have no DELETE endpoint, so specs can't clean up through the API;
    * this drops the collections directly. Users are kept so the seeded admin
    * survives, which is also why it can only ever point at a throwaway DB.
+   *
+   * Roles are re-seeded afterwards, restoring the same state a real backend
+   * boots into — seedRoles() is a no-op unless the collection is empty, so a
+   * spec that deactivates a seeded role still gets a clean slate here.
    */
   const outer = express();
   outer.post('/__test__/reset', async (_req, res, next) => {
@@ -68,6 +87,7 @@ async function main() {
           .filter(([name]) => name !== 'users')
           .map(([, collection]) => collection.deleteMany({})),
       );
+      await seedRoles();
       res.status(204).end();
     } catch (error) {
       next(error);

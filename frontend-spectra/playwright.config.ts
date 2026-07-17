@@ -20,6 +20,9 @@ export const BACKEND_ORIGIN = `http://localhost:${BACKEND_PORT}`;
 /** Must match ADMIN_EMAIL/ADMIN_PASSWORD seeded by the e2e backend. */
 export const E2E_ADMIN = { email: 'e2e-admin@example.test', password: 'e2e-admin-pw-1' };
 
+/** The non-admin account the e2e backend seeds, for the read-only specs. */
+export const E2E_OPERATOR = { email: 'e2e-operator@example.test', password: 'e2e-operator-pw-1' };
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,

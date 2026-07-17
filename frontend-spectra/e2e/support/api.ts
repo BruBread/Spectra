@@ -85,11 +85,61 @@ export async function alertCounts(api: APIRequestContext) {
   return (await response.json()) as { unread: number; criticalOpen: number; new: number };
 }
 
-/** Signs in through the real login form, exercising the session cookie path. */
-export async function loginViaUi(page: Page) {
+/* ------------------------------ access control ------------------------------ */
+
+export interface SeedRole {
+  _id: string;
+  key: string;
+  name: string;
+}
+
+/**
+ * The two roles a real backend seeds at boot, which the e2e backend seeds too
+ * (and re-seeds after each reset). Returned rather than assumed so a spec
+ * never hard-codes an id.
+ */
+export async function seededRoles(api: APIRequestContext): Promise<SeedRole[]> {
+  const response = await api.get('/api/roles');
+  if (!response.ok()) throw new Error(`listing roles failed: ${response.status()} ${await response.text()}`);
+  return (await response.json()) as SeedRole[];
+}
+
+export async function roleByKey(api: APIRequestContext, key: string): Promise<SeedRole> {
+  const role = (await seededRoles(api)).find((candidate) => candidate.key === key);
+  if (!role) throw new Error(`role "${key}" is not seeded`);
+  return role;
+}
+
+export async function seedPerson(
+  api: APIRequestContext,
+  person: { name: string; roleId: string; aprilTagId?: number | null; loraDeviceId?: string | null },
+) {
+  const response = await api.post('/api/people', { data: person });
+  if (!response.ok()) throw new Error(`seeding person failed: ${response.status()} ${await response.text()}`);
+  return (await response.json()) as { _id: string; name: string };
+}
+
+export async function seedZone(
+  api: APIRequestContext,
+  zone: { name: string; cameraId: string; rect?: { x: number; y: number; width: number; height: number } },
+) {
+  const response = await api.post('/api/zones', {
+    data: { rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.4 }, ...zone },
+  });
+  if (!response.ok()) throw new Error(`seeding zone failed: ${response.status()} ${await response.text()}`);
+  return (await response.json()) as { _id: string; name: string };
+}
+
+/** Signs in through the real login form as any seeded account. */
+export async function loginAs(page: Page, credentials: { email: string; password: string }) {
   await page.goto('/login');
-  await page.getByLabel('Email address').fill(E2E_ADMIN.email);
-  await page.getByLabel('Password', { exact: true }).fill(E2E_ADMIN.password);
+  await page.getByLabel('Email address').fill(credentials.email);
+  await page.getByLabel('Password', { exact: true }).fill(credentials.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await page.waitForURL((url) => !url.pathname.startsWith('/login'));
+}
+
+/** Signs in through the real login form, exercising the session cookie path. */
+export function loginViaUi(page: Page) {
+  return loginAs(page, E2E_ADMIN);
 }
