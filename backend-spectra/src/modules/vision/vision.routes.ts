@@ -12,5 +12,10 @@ visionRouter.patch('/apriltag-mappings/:id', visionController.updateAprilTagMapp
 visionRouter.delete('/apriltag-mappings/:id', visionController.deleteAprilTagMapping);
 
 visionRouter.get('/alerts', visionController.listAlerts);
+visionRouter.get('/alerts/counts', visionController.getAlertCounts);
 visionRouter.post('/alerts', visionController.createAlert);
+visionRouter.post('/alerts/read-all', visionController.markAllAlertsRead);
+visionRouter.patch('/alerts/:id/status', visionController.updateAlertStatus);
+visionRouter.patch('/alerts/:id/read', visionController.markAlertRead);
+// Legacy acknowledge endpoint — kept working while clients move to /status.
 visionRouter.patch('/alerts/:id', visionController.acknowledgeAlert);

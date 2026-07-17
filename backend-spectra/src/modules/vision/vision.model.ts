@@ -1,5 +1,5 @@
 import { Schema, model } from 'mongoose';
-import { DETECTION_TYPES } from './vision.types.js';
+import { ALERT_SEVERITIES, ALERT_STATUSES, DETECTION_TYPES } from './vision.types.js';
 
 const zoneSchema = new Schema(
   {
@@ -51,15 +51,26 @@ const visionAlertSchema = new Schema(
   {
     cameraId: { type: String, required: true, index: true },
     type: { type: String, enum: DETECTION_TYPES, required: true, index: true },
+    severity: { type: String, enum: ALERT_SEVERITIES, required: true, default: 'warning' },
+    status: { type: String, enum: ALERT_STATUSES, required: true, default: 'new' },
+    read: { type: Boolean, required: true, default: false },
+    zoneName: { type: String, default: null },
     confidence: { type: Number, required: true },
     message: { type: String, required: true },
     snapshot: { type: String, default: null },
     metadata: { type: Schema.Types.Mixed, default: {} },
+    /** Repeats of the same detection inside the cooldown window fold in here instead of creating duplicates. */
+    occurrences: { type: Number, required: true, default: 1, min: 1 },
+    lastOccurredAt: { type: Date, required: true, default: Date.now },
+    /** Legacy flag, kept in sync with `status` — see acknowledgedForStatus(). */
     acknowledged: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
 visionAlertSchema.index({ cameraId: 1, createdAt: -1 });
+visionAlertSchema.index({ status: 1, severity: 1, createdAt: -1 });
+visionAlertSchema.index({ read: 1, createdAt: -1 });
+visionAlertSchema.index({ zoneName: 1, createdAt: -1 });
 
 export const VisionAlert = model('VisionAlert', visionAlertSchema);

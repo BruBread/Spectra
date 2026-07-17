@@ -135,3 +135,76 @@ broker and subscribe to uplinks instead of (or alongside) the webhook.
 `GET {API_BASE_URL}/api/lorawan/readings?deviceId=<id>&limit=<n>` returns the
 most recent readings, newest first — this is what the iOS app (or the
 frontend) should call to display device data.
+
+## Vision alerts API
+
+Location: `backend-spectra/src/modules/vision/`
+
+Alerts are AI-assisted signals for a human to review — never a confirmed
+incident. Endpoints are under `{API_BASE_URL}/api/vision`.
+
+### Alert shape
+
+| Field | Notes |
+|---|---|
+| `_id` | Alert id |
+| `cameraId` | Camera the detection came from |
+| `type` | `unattended_object`, `loitering`, `running`, `fighting`, `drowning`, `intoxication`, `apriltag` |
+| `severity` | `info` \| `warning` \| `critical` |
+| `status` | `new` \| `acknowledged` \| `under_review` \| `resolved` \| `dismissed` |
+| `read` | Read/unread state for notification badges |
+| `zoneName` | Optional zone label the detection fired in |
+| `confidence` | Detector confidence, 0–1 |
+| `message` | Neutral, review-oriented description |
+| `snapshot` | Optional base64 JPEG evidence frame |
+| `metadata` | Detector-specific detail (e.g. `trackId`) |
+| `occurrences` / `lastOccurredAt` | Repeat count and most recent repeat (see grouping) |
+| `acknowledged` | **Legacy.** Kept in sync with `status`: `true` for any status other than `new` |
+| `createdAt` | First occurrence |
+
+Severity defaults per type when the client doesn't send one: `drowning` and
+`fighting` are `critical`, `apriltag` is `info`, everything else is
+`warning`.
+
+### Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/alerts` | List alerts, newest first |
+| `GET` | `/alerts/counts` | `{ unread, criticalOpen, new }` totals for badges |
+| `POST` | `/alerts` | Create an alert (`201`), or group a repeat (`200`) |
+| `POST` | `/alerts/read-all` | Mark every unread alert read → `{ modified }` |
+| `PATCH` | `/alerts/:id/status` | Body `{ status }` — update review status |
+| `PATCH` | `/alerts/:id/read` | Body `{ read }` (default `true`) |
+| `PATCH` | `/alerts/:id` | **Legacy** acknowledge — same as `status: acknowledged` |
+
+`GET /alerts` filters, combinable: `cameraId`, `type`, `severity`, `status`
+(single or comma-separated, e.g. `status=new,under_review`), `zoneName`,
+`read`, `from` / `to` (ISO dates, against `createdAt`), `limit` (default
+`50`, max `200`), plus the legacy `acknowledged`. A filter that is present
+but invalid returns `400` rather than silently returning unfiltered results.
+
+Moving an alert out of `new` also marks it read — triaging it means a human
+already looked at it.
+
+### Duplicate grouping
+
+A detection for the same camera + type + `metadata.trackId` arriving inside
+that detector's configured `cooldownSeconds` folds into the existing alert:
+`occurrences` increments and `lastOccurredAt` moves. The original record —
+snapshot, confidence, `createdAt` — is never overwritten, and `read` is left
+alone so repeats don't re-trigger the badge. Two limits keep events from
+being hidden: only alerts still open (`new`/`acknowledged`/`under_review`)
+absorb repeats, so a recurrence after an alert is resolved or dismissed
+raises a fresh alert; and the window is measured from the original
+`createdAt`, so a condition persisting past the cooldown raises a new alert
+instead of incrementing one row forever.
+
+### Migration
+
+Alerts written before the status lifecycle existed are backfilled once at
+boot (`vision.migration.ts`): `acknowledged: true` → `status: acknowledged`
++ `read: true`, `acknowledged: false` (or missing) → `status: new`, severity
+from the alert's type, `occurrences: 1`, and `lastOccurredAt` set to the
+original `createdAt`. It only matches documents with no `status`, so it is
+idempotent and no manual database reset is needed.

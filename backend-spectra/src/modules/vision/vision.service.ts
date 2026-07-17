@@ -1,5 +1,14 @@
 import { AprilTagMapping, VisionAlert, VisionSettings } from './vision.model.js';
-import { DETECTION_TYPES, defaultDetectorConfigs, type DetectionType } from './vision.types.js';
+import {
+  DETECTION_TYPES,
+  OPEN_ALERT_STATUSES,
+  acknowledgedForStatus,
+  defaultDetectorConfigs,
+  defaultSeverityForType,
+  type AlertSeverity,
+  type AlertStatus,
+  type DetectionType,
+} from './vision.types.js';
 
 export async function getSettings(cameraId: string) {
   let settings = await VisionSettings.findOne({ cameraId });
@@ -62,17 +71,52 @@ export function deleteAprilTagMapping(id: string) {
 interface ListAlertsParams {
   cameraId?: string;
   type?: DetectionType;
+  severity?: AlertSeverity;
+  status?: AlertStatus[];
+  zoneName?: string;
+  read?: boolean;
+  /** Legacy filter, still honoured for existing clients. */
   acknowledged?: boolean;
+  from?: Date;
+  to?: Date;
   limit: number;
 }
 
-export function listAlerts({ cameraId, type, acknowledged, limit }: ListAlertsParams) {
+export function listAlerts({
+  cameraId,
+  type,
+  severity,
+  status,
+  zoneName,
+  read,
+  acknowledged,
+  from,
+  to,
+  limit,
+}: ListAlertsParams) {
   const query: Record<string, unknown> = {};
   if (cameraId) query.cameraId = cameraId;
   if (type) query.type = type;
+  if (severity) query.severity = severity;
+  if (status && status.length > 0) query.status = status.length === 1 ? status[0] : { $in: status };
+  if (zoneName) query.zoneName = zoneName;
+  if (read !== undefined) query.read = read;
   if (acknowledged !== undefined) query.acknowledged = acknowledged;
+  if (from || to) {
+    query.createdAt = { ...(from && { $gte: from }), ...(to && { $lte: to }) };
+  }
 
   return VisionAlert.find(query).sort({ createdAt: -1 }).limit(limit);
+}
+
+export async function countAlerts() {
+  const [unread, criticalOpen, newCount] = await Promise.all([
+    VisionAlert.countDocuments({ read: false }),
+    VisionAlert.countDocuments({ severity: 'critical', status: { $in: OPEN_ALERT_STATUSES } }),
+    VisionAlert.countDocuments({ status: 'new' }),
+  ]);
+
+  return { unread, criticalOpen, new: newCount };
 }
 
 interface CreateAlertInput {
@@ -80,16 +124,33 @@ interface CreateAlertInput {
   type: DetectionType;
   confidence: number;
   message: string;
+  severity?: AlertSeverity;
+  zoneName?: string | null;
   snapshot?: string | null;
   metadata?: Record<string, unknown>;
 }
 
 /**
- * Guards against duplicate alerts slipping through if a client retries or
- * double-fires: rejects a new alert for the same camera+type+tracked entity
- * within that detector's configured cooldown window. The primary dedup
- * logic (duration thresholds, per-track cooldowns) lives in the client
- * pipeline — this is a defense-in-depth backstop, not the main mechanism.
+ * Groups repeats instead of stacking duplicates: a detection for the same
+ * camera + type + tracked entity arriving inside that detector's cooldown
+ * window folds into the existing alert, bumping `occurrences` and
+ * `lastOccurredAt`. The original record — including its snapshot, confidence
+ * and createdAt — is never overwritten or replaced.
+ *
+ * Two deliberate limits on grouping:
+ * - Only alerts still open (new/acknowledged/under_review) absorb repeats. A
+ *   resolved or dismissed alert stays closed and the repeat raises a fresh
+ *   alert, so an event recurring after sign-off can't be silently swallowed.
+ * - The window is measured from the original `createdAt`, so a condition that
+ *   persists past the cooldown raises a new alert rather than incrementing
+ *   one row forever.
+ *
+ * `read` is left alone on purpose — re-flagging a grouped alert as unread on
+ * every repeat is the notification spam this is meant to prevent.
+ *
+ * The primary dedup logic (duration thresholds, per-track cooldowns) lives in
+ * the client pipeline; this is a defense-in-depth backstop for retries and
+ * double-fires, not the main mechanism.
  */
 export async function createAlert(input: CreateAlertInput) {
   const settings = await getSettings(input.cameraId);
@@ -100,27 +161,40 @@ export async function createAlert(input: CreateAlertInput) {
     ? input.metadata.trackId
     : undefined;
 
-  const dedupeQuery: Record<string, unknown> = {
+  const groupQuery: Record<string, unknown> = {
     cameraId: input.cameraId,
     type: input.type,
+    status: { $in: OPEN_ALERT_STATUSES },
     createdAt: { $gte: new Date(Date.now() - cooldownSeconds * 1000) },
   };
   if (trackId !== undefined) {
-    dedupeQuery['metadata.trackId'] = trackId;
+    groupQuery['metadata.trackId'] = trackId;
   }
 
-  const recentDuplicate = await VisionAlert.findOne(dedupeQuery);
-  if (recentDuplicate) {
-    return { alert: recentDuplicate, deduped: true as const };
+  const grouped = await VisionAlert.findOneAndUpdate(
+    groupQuery,
+    { $inc: { occurrences: 1 }, $set: { lastOccurredAt: new Date() } },
+    { new: true, sort: { createdAt: -1 } },
+  );
+  if (grouped) {
+    return { alert: grouped, deduped: true as const };
   }
 
+  const now = new Date();
   const alert = await VisionAlert.create({
     cameraId: input.cameraId,
     type: input.type,
+    severity: input.severity ?? defaultSeverityForType(input.type),
+    status: 'new',
+    read: false,
+    acknowledged: false,
+    zoneName: input.zoneName ?? null,
     confidence: input.confidence,
     message: input.message,
     snapshot: input.snapshot ?? null,
     metadata: input.metadata ?? {},
+    occurrences: 1,
+    lastOccurredAt: now,
   });
 
   const retentionDays = settings.retentionDays ?? 14;
@@ -130,6 +204,28 @@ export async function createAlert(input: CreateAlertInput) {
   return { alert, deduped: false as const };
 }
 
+/**
+ * Moving an alert out of `new` also marks it read: a human had to look at it
+ * to triage it, so leaving it in the unread badge would just double the work.
+ */
+export function setAlertStatus(id: string, status: AlertStatus) {
+  const update: Record<string, unknown> = { status, acknowledged: acknowledgedForStatus(status) };
+  if (status !== 'new') {
+    update.read = true;
+  }
+  return VisionAlert.findByIdAndUpdate(id, { $set: update }, { new: true });
+}
+
+export function markAlertRead(id: string, read: boolean) {
+  return VisionAlert.findByIdAndUpdate(id, { $set: { read } }, { new: true });
+}
+
+export async function markAllAlertsRead() {
+  const result = await VisionAlert.updateMany({ read: false }, { $set: { read: true } });
+  return { modified: result.modifiedCount ?? 0 };
+}
+
+/** Legacy path kept for the existing `PATCH /alerts/:id` endpoint. */
 export function acknowledgeAlert(id: string) {
-  return VisionAlert.findByIdAndUpdate(id, { $set: { acknowledged: true } }, { new: true });
+  return setAlertStatus(id, 'acknowledged');
 }
