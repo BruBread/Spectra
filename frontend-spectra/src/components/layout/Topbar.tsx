@@ -3,12 +3,9 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { Bell, ChevronDown, LogOut, Menu, Settings as SettingsIcon, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useAppData } from '../../context/AppDataContext';
 import { Avatar } from '../ui/Avatar';
 import { IconButton } from '../ui/IconButton';
 import { Dropdown, DropdownItem } from '../ui/Dropdown';
-import { Badge } from '../ui/Badge';
-import { RelativeTime } from '../ui/RelativeTime';
 import { EmptyState } from '../ui/EmptyState';
 import styles from './Topbar.module.css';
 
@@ -34,9 +31,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useAppData();
-
-  const unreadCount = notifications.filter((notification) => !notification.read).length;
 
   const handleLogout = async () => {
     await logout();
@@ -59,7 +53,6 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             <IconButton ref={ref} label="Notifications" active={open} onClick={onClick}>
               <span className={styles.bellWrapper}>
                 <Bell size={19} aria-hidden="true" />
-                {unreadCount > 0 ? <span className={styles.badgeDot}>{unreadCount}</span> : null}
               </span>
             </IconButton>
           )}
@@ -68,43 +61,14 @@ export function Topbar({ onOpenMobileNav }: TopbarProps) {
             <div className={styles.notificationPanel}>
               <div className={styles.notificationHeader}>
                 <span>Notifications</span>
-                {unreadCount > 0 ? (
-                  <button type="button" className={styles.markAll} onClick={markAllNotificationsRead}>
-                    Mark all as read
-                  </button>
-                ) : null}
               </div>
               <div className={styles.notificationList}>
-                {notifications.length === 0 ? (
-                  <EmptyState title="No notifications" description="You're all caught up." />
-                ) : (
-                  notifications.slice(0, 6).map((notification) => (
-                    <button
-                      key={notification.id}
-                      type="button"
-                      className={styles.notificationItem}
-                      data-unread={!notification.read}
-                      onClick={() => markNotificationRead(notification.id)}
-                    >
-                      <span className={styles.notificationTop}>
-                        <span className={styles.notificationTitle}>{notification.title}</span>
-                        <Badge
-                          tone={
-                            notification.severity === 'critical'
-                              ? 'danger'
-                              : notification.severity === 'warning'
-                                ? 'warning'
-                                : 'info'
-                          }
-                        >
-                          {notification.severity}
-                        </Badge>
-                      </span>
-                      <span className={styles.notificationMessage}>{notification.message}</span>
-                      <RelativeTime iso={notification.timestamp} className={styles.notificationTime} />
-                    </button>
-                  ))
-                )}
+                {/* No unread badge until this is backed by the API: a count is a
+                    claim about real events, and there is nothing recording them yet. */}
+                <EmptyState
+                  title="Not connected yet"
+                  description="Notifications aren't wired to the backend yet. Detections recorded by the vision pipeline appear on the Live Monitor page."
+                />
               </div>
             </div>
           )}

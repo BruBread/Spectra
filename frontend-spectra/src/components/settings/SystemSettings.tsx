@@ -1,29 +1,17 @@
 'use client';
 
-import { useState } from 'react';
 import { useAppData } from '../../context/AppDataContext';
-import { useToast } from '../../context/ToastContext';
 import { Card, CardHeader } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Switch } from '../ui/Switch';
-import { Button } from '../ui/Button';
-import { Modal } from '../ui/Modal';
 import type { DetectionSettings } from '../../lib/types';
 import styles from './SettingsPanels.module.css';
 
 export function SystemSettings() {
-  const { settings, updateSettings, resetDemoData } = useAppData();
-  const { showToast } = useToast();
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const { settings, updateSettings } = useAppData();
 
   const setDetection = (key: keyof DetectionSettings, value: DetectionSettings[keyof DetectionSettings]) => {
     updateSettings({ detection: { ...settings.detection, [key]: value } });
-  };
-
-  const handleReset = () => {
-    resetDemoData();
-    setConfirmResetOpen(false);
-    showToast('Demo data has been reset', 'info');
   };
 
   return (
@@ -71,47 +59,21 @@ export function SystemSettings() {
       </Card>
 
       <Card>
-        <CardHeader title="System" subtitle="Platform information and data management." />
+        <CardHeader title="System" subtitle="Platform information." />
         <dl className={styles.systemGrid}>
           <div>
-            <dt>Version</dt>
-            <dd>Spectra Admin v2.4.1</dd>
-          </div>
-          <div>
-            <dt>Environment</dt>
-            <dd>{process.env.NEXT_PUBLIC_API_BASE_URL ? 'Connected to backend API' : 'Demo mode (no API configured)'}</dd>
+            <dt>Backend API</dt>
+            <dd>
+              {process.env.NEXT_PUBLIC_API_BASE_URL
+                ? process.env.NEXT_PUBLIC_API_BASE_URL
+                : 'No API base URL configured'}
+            </dd>
           </div>
         </dl>
-        <div className={styles.divider} />
-        <p className={styles.helperText}>
-          Reset all locally stored demo data — cameras, customers, logs and settings — back to the original seed values.
-        </p>
-        <div className={styles.actionsRow}>
-          <Button variant="danger" onClick={() => setConfirmResetOpen(true)}>
-            Reset demo data
-          </Button>
-        </div>
+        {/* The version row here reported a hard-coded "v2.4.1" that matched no
+            real build, and the reset control regenerated demo records. Both are
+            gone: this panel now states only what it can actually know. */}
       </Card>
-
-      <Modal
-        open={confirmResetOpen}
-        onClose={() => setConfirmResetOpen(false)}
-        title="Reset demo data?"
-        description="This clears everything stored locally in this browser and restores the original demo dataset. This cannot be undone."
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirmResetOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={handleReset}>
-              Reset data
-            </Button>
-          </>
-        }
-      >
-        <p className={styles.helperText}>Any cameras or customers you&apos;ve added will be removed.</p>
-      </Modal>
     </>
   );
 }

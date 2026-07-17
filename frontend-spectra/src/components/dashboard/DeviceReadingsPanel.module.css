@@ -75,3 +75,13 @@
   font-size: 0.6875rem;
   color: var(--color-text-muted);
 }
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

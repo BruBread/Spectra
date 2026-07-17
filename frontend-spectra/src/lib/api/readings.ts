@@ -1,9 +1,17 @@
 import type { DeviceReading } from '../types';
-import { generateMockReadings } from '../mock/readings';
+import { request } from './client';
+
+/**
+ * `empty` and `error` are kept distinct on purpose: "no uplinks recorded yet"
+ * and "we couldn't reach the backend" are different facts, and the panel must
+ * not present one as the other.
+ */
+export type ReadingsStatus = 'ok' | 'empty' | 'error';
 
 export interface FetchReadingsResult {
   readings: DeviceReading[];
-  source: 'live' | 'mock';
+  status: ReadingsStatus;
+  error?: string;
 }
 
 interface FetchReadingsParams {
@@ -12,42 +20,23 @@ interface FetchReadingsParams {
 }
 
 /**
- * Attempts to load real uplink readings from the backend's lorawan-ingest
- * endpoint. Falls back to demo data whenever the API base URL isn't
- * configured, the request fails, or the response is empty — the dashboard
- * must always have something to render.
+ * Loads real uplink readings from the backend's lorawan-ingest endpoint.
+ *
+ * This used to fall back to generated demo readings whenever the API was
+ * unreachable or empty, which meant the dashboard could show invented device
+ * traffic. It no longer invents anything: callers get the real rows, or an
+ * honest empty/error status.
  */
 export async function fetchDeviceReadings(params: FetchReadingsParams = {}): Promise<FetchReadingsResult> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const search = new URLSearchParams();
+  if (params.deviceId) search.set('deviceId', params.deviceId);
+  search.set('limit', String(params.limit ?? 10));
 
-  if (!baseUrl) {
-    return { readings: generateMockReadings(), source: 'mock' };
+  const result = await request<DeviceReading[]>(`/api/lorawan/readings?${search.toString()}`);
+
+  if (!result.ok || !result.data) {
+    return { readings: [], status: 'error', error: result.error ?? 'Could not reach the backend.' };
   }
 
-  try {
-    const url = new URL('/api/lorawan/readings', baseUrl);
-    if (params.deviceId) url.searchParams.set('deviceId', params.deviceId);
-    url.searchParams.set('limit', String(params.limit ?? 10));
-
-    const response = await fetch(url.toString(), {
-      cache: 'no-store',
-      // Readings now require a session; without the cookie this 401s and the
-      // panel falls back to demo data.
-      credentials: 'include',
-      signal: AbortSignal.timeout(4000),
-    });
-
-    if (!response.ok) {
-      return { readings: generateMockReadings(), source: 'mock' };
-    }
-
-    const data: unknown = await response.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      return { readings: generateMockReadings(), source: 'mock' };
-    }
-
-    return { readings: data as DeviceReading[], source: 'live' };
-  } catch {
-    return { readings: generateMockReadings(), source: 'mock' };
-  }
+  return { readings: result.data, status: result.data.length === 0 ? 'empty' : 'ok' };
 }

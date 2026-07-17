@@ -26,12 +26,27 @@ export function removeStorage(key: string): void {
   }
 }
 
-// Authentication is no longer stored here: the session lives in an HTTP-only
-// cookie issued by the backend, which JavaScript deliberately cannot read.
+/**
+ * Only the admin's own client-side preferences belong here.
+ *
+ * Authentication lives in an HTTP-only cookie the browser won't expose to
+ * JavaScript. Customers, logs and notifications were removed: operational
+ * records must come from the backend, never from seeded browser storage.
+ */
 export const STORAGE_KEYS = {
   theme: 'spectra-theme',
-  customers: 'spectra-customers',
-  logs: 'spectra-logs',
-  notifications: 'spectra-notifications',
   settings: 'spectra-settings',
 } as const;
+
+/**
+ * Storage keys that previously held generated demo records. Cleared on load
+ * so existing browsers don't keep stale fake data around forever.
+ */
+const RETIRED_STORAGE_KEYS = ['spectra-auth', 'spectra-demo-password', 'spectra-customers', 'spectra-logs', 'spectra-notifications'];
+
+export function purgeRetiredStorage(): void {
+  if (typeof window === 'undefined') return;
+  for (const key of RETIRED_STORAGE_KEYS) {
+    removeStorage(key);
+  }
+}

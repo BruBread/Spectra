@@ -93,6 +93,17 @@ export async function fetchAlerts(params: {
   return { data: result.data.map(normalizeAlert), ok: true };
 }
 
+/** Mirrors the backend's `GET /api/vision/alerts/counts` response. */
+export interface AlertCounts {
+  unread: number;
+  criticalOpen: number;
+  new: number;
+}
+
+export function fetchAlertCounts(): Promise<ApiResult<AlertCounts>> {
+  return request<AlertCounts>('/api/vision/alerts/counts');
+}
+
 export async function createAlert(input: NewVisionAlert): Promise<ApiResult<VisionAlert>> {
   const result = await request<Record<string, unknown>>('/api/vision/alerts', {
     method: 'POST',

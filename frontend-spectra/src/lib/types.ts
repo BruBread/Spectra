@@ -1,5 +1,15 @@
 export type Severity = 'info' | 'warning' | 'critical';
 
+/* ---------------------------------------------------------------------------
+ * NOT YET IMPLEMENTED
+ *
+ * The customer, log and notification types below describe features that have
+ * no backend model, route or API client. They are kept as the intended shapes
+ * for when those endpoints are built — nothing renders them today, and the
+ * generators that used to fabricate records in these shapes are gone. Confirm
+ * against the real API before relying on them.
+ * ------------------------------------------------------------------------ */
+
 export type CustomerStatus = 'active' | 'inactive' | 'pending';
 
 export interface Customer {
@@ -38,6 +48,8 @@ export interface NotificationItem {
   timestamp: string;
   read: boolean;
 }
+
+/* --------------------------- end NOT YET IMPLEMENTED --------------------- */
 
 export interface DetectionSettings {
   sensitivity: 'low' | 'medium' | 'high';
