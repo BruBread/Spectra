@@ -2,6 +2,7 @@ import type { DetectionTypeConfig, VisionSettings } from './types';
 
 export const DEFAULT_CAMERA_ID = 'webcam-default';
 
+/** Mirrors the backend's BASE_DETECTORS — used only until real settings load. */
 const BASE_DETECTORS: DetectionTypeConfig[] = [
   {
     type: 'unattended_object',
@@ -9,46 +10,6 @@ const BASE_DETECTORS: DetectionTypeConfig[] = [
     confidenceThreshold: 0.6,
     cooldownSeconds: 60,
     durationThresholdSeconds: 30,
-    zone: null,
-  },
-  {
-    type: 'loitering',
-    enabled: true,
-    confidenceThreshold: 0.5,
-    cooldownSeconds: 120,
-    durationThresholdSeconds: 20,
-    zone: null,
-  },
-  {
-    type: 'running',
-    enabled: true,
-    confidenceThreshold: 0.55,
-    cooldownSeconds: 30,
-    durationThresholdSeconds: 1.5,
-    zone: null,
-  },
-  {
-    type: 'fighting',
-    enabled: true,
-    confidenceThreshold: 0.55,
-    cooldownSeconds: 30,
-    durationThresholdSeconds: 1.5,
-    zone: null,
-  },
-  {
-    type: 'drowning',
-    enabled: true,
-    confidenceThreshold: 0.5,
-    cooldownSeconds: 45,
-    durationThresholdSeconds: 5,
-    zone: null,
-  },
-  {
-    type: 'intoxication',
-    enabled: true,
-    confidenceThreshold: 0.5,
-    cooldownSeconds: 60,
-    durationThresholdSeconds: 5,
     zone: null,
   },
   {

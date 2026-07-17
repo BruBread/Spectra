@@ -14,7 +14,8 @@
     "typecheck:test": "tsc -p tsconfig.test.json",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "test:watch": "node --import tsx --test --watch \"test/**/*.test.ts\"",
-    "test:e2e-server": "tsx test/support/e2eServer.ts"
+    "test:e2e-server": "tsx test/support/e2eServer.ts",
+    "purge:retired-alerts": "tsx scripts/purgeRetiredAlerts.ts"
   },
   "dependencies": {
     "connect-mongo": "^6.0.0",

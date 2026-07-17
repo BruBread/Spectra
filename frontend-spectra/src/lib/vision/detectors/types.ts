@@ -1,5 +1,4 @@
 import type { DetectedObjectBox } from '../models/objectModel';
-import type { DetectedPose } from '../models/poseModel';
 import type { DetectedAprilTag } from '../models/aprilTagModel';
 import type { DetectionType, DetectionTypeConfig, Zone } from '../types';
 
@@ -19,7 +18,6 @@ export interface DetectorFrameInput {
   videoWidth: number;
   videoHeight: number;
   objects: DetectedObjectBox[];
-  poses: DetectedPose[];
   aprilTags: DetectedAprilTag[];
   /** Multiply AprilTag corner coords by this to map them into video pixel coordinates. */
   aprilTagScale: number;

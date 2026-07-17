@@ -1,5 +1,5 @@
-import { VisionAlert } from './vision.model.js';
-import { DETECTION_TYPES, defaultSeverityForType } from './vision.types.js';
+import { VisionAlert, VisionSettings } from './vision.model.js';
+import { DETECTION_TYPES, RETIRED_DETECTION_TYPES, defaultSeverityForType } from './vision.types.js';
 
 /**
  * Backfills alerts written before the notification lifecycle existed
@@ -43,4 +43,31 @@ export async function backfillAlertLifecycleFields(): Promise<number> {
   const migrated = result.modifiedCount ?? 0;
   console.log(`[vision] backfilled lifecycle fields on ${migrated} legacy alert(s)`);
   return migrated;
+}
+
+/**
+ * Drops retired detectors from stored per-camera settings.
+ *
+ * This is not cosmetic. `getSettings()` backfills missing detectors and calls
+ * `save()`, which validates the whole document — so a settings row still
+ * holding a retired detector config would make the first GET after the
+ * detectors were removed fail with a validation error rather than a 200.
+ *
+ * Alerts are deliberately not touched: retired types remain valid on stored
+ * alerts so recorded history keeps rendering (see RETIRED_DETECTION_TYPES).
+ *
+ * Idempotent: once no settings row contains a retired detector, it matches
+ * nothing.
+ */
+export async function stripRetiredDetectorSettings(): Promise<number> {
+  const result = await VisionSettings.updateMany(
+    { detectors: { $elemMatch: { type: { $in: RETIRED_DETECTION_TYPES } } } },
+    { $pull: { detectors: { type: { $in: RETIRED_DETECTION_TYPES } } } },
+  );
+
+  const modified = result.modifiedCount ?? 0;
+  if (modified > 0) {
+    console.log(`[vision] removed retired detector settings from ${modified} camera setting(s)`);
+  }
+  return modified;
 }

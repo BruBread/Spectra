@@ -1,7 +1,15 @@
 import type { BadgeTone } from '../../components/ui/Badge';
 import type { CameraRecord } from '../cameras/types';
 import { DEFAULT_CAMERA_ID } from '../vision/defaults';
-import { DETECTION_LABELS, type AlertSeverity, type AlertStatus, type VisionAlert } from '../vision/types';
+import {
+  ALL_DETECTION_LABELS,
+  DETECTION_DESCRIPTIONS,
+  RETIRED_DETECTION_TYPES,
+  type AlertSeverity,
+  type AlertStatus,
+  type AnyDetectionType,
+  type VisionAlert,
+} from '../vision/types';
 
 /**
  * A notification in this app is not a record of its own — it is a presentation
@@ -23,9 +31,13 @@ export const STATUS_TONE: Record<AlertStatus, BadgeTone> = {
   dismissed: 'neutral',
 };
 
-/** Neutral, review-oriented title. A detection is a signal to check, never a verdict. */
+/**
+ * Neutral, review-oriented title. A detection is a signal to check, never a
+ * verdict. Uses the full label map so alerts from retired detectors still
+ * name themselves instead of falling back to a generic "Detection".
+ */
 export function alertTitle(alert: VisionAlert): string {
-  return DETECTION_LABELS[alert.type] ?? 'Detection';
+  return ALL_DETECTION_LABELS[alert.type] ?? 'Detection';
 }
 
 /**
@@ -50,6 +62,17 @@ export function resolveCamera(alert: VisionAlert, cameras: CameraRecord[]) {
 
 export function monitorHref(alert: VisionAlert): string {
   return `/monitor?camera=${encodeURIComponent(alert.cameraId)}`;
+}
+
+/**
+ * What the detector looks for. Retired types have no description because the
+ * detector is gone — say that plainly rather than leaving a blank line.
+ */
+export function detectionDescription(type: AnyDetectionType): string {
+  if ((RETIRED_DETECTION_TYPES as string[]).includes(type)) {
+    return 'This detector has been removed from Spectra. The alert is kept as a historical record and nothing raises this type any more.';
+  }
+  return DETECTION_DESCRIPTIONS[type as keyof typeof DETECTION_DESCRIPTIONS] ?? '';
 }
 
 export function confidencePercent(alert: VisionAlert): string {

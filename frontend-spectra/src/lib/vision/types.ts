@@ -1,14 +1,18 @@
-export type DetectionType =
-  | 'unattended_object'
-  | 'loitering'
-  | 'running'
-  | 'fighting'
-  | 'drowning'
-  | 'intoxication'
-  | 'apriltag';
+/** Detection types the pipeline can produce today. */
+export type DetectionType = 'unattended_object' | 'apriltag';
+
+/**
+ * Types removed from the product. Their detectors are gone, so nothing can
+ * raise one — they exist here only so alerts already recorded stay readable
+ * and filterable rather than rendering as "undefined".
+ */
+export type RetiredDetectionType = 'loitering' | 'running' | 'fighting' | 'drowning' | 'intoxication';
+
+/** Anything a stored alert may carry: active types plus retired history. */
+export type AnyDetectionType = DetectionType | RetiredDetectionType;
 
 /** What raw model output a detector needs computed for it each tick. */
-export type DetectionRequirement = 'objects' | 'pose' | 'apriltag';
+export type DetectionRequirement = 'objects' | 'apriltag';
 
 export interface Zone {
   x: number;
@@ -75,12 +79,7 @@ export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
 };
 
 const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
-  drowning: 'critical',
-  fighting: 'critical',
-  running: 'warning',
-  loitering: 'warning',
   unattended_object: 'warning',
-  intoxication: 'warning',
   apriltag: 'info',
 };
 
@@ -97,7 +96,8 @@ export function defaultSeverityForType(type: DetectionType): AlertSeverity {
 export interface VisionAlert {
   id: string;
   cameraId: string;
-  type: DetectionType;
+  /** May be a retired type on alerts recorded before those detectors were removed. */
+  type: AnyDetectionType;
   severity: AlertSeverity;
   status: AlertStatus;
   read: boolean;
@@ -124,48 +124,46 @@ export interface NewVisionAlert {
   metadata?: Record<string, unknown>;
 }
 
-/** Enumerable form of DetectionType, for building filter options. Mirrors the backend's DETECTION_TYPES. */
-export const DETECTION_TYPES: DetectionType[] = [
-  'unattended_object',
+/** Mirrors the backend's DETECTION_TYPES — active types, for settings and new alerts. */
+export const DETECTION_TYPES: DetectionType[] = ['unattended_object', 'apriltag'];
+
+export const RETIRED_DETECTION_TYPES: RetiredDetectionType[] = [
   'loitering',
   'running',
   'fighting',
   'drowning',
   'intoxication',
-  'apriltag',
 ];
+
+/** For filtering, which must still reach recorded history. */
+export const ALL_DETECTION_TYPES: AnyDetectionType[] = [...DETECTION_TYPES, ...RETIRED_DETECTION_TYPES];
 
 export const DETECTION_LABELS: Record<DetectionType, string> = {
   unattended_object: 'Unattended Object',
-  loitering: 'Loitering',
-  running: 'Running',
-  fighting: 'Fighting',
-  drowning: 'Drowning Posture',
-  intoxication: 'Intoxicated Behavior',
   apriltag: 'AprilTag',
+};
+
+/**
+ * Labels for every type an alert may carry. Retired ones are marked so a
+ * historical alert is never mistaken for something the system still watches
+ * for.
+ */
+export const ALL_DETECTION_LABELS: Record<AnyDetectionType, string> = {
+  ...DETECTION_LABELS,
+  loitering: 'Loitering (retired)',
+  running: 'Running (retired)',
+  fighting: 'Fighting (retired)',
+  drowning: 'Drowning Posture (retired)',
+  intoxication: 'Intoxicated Behavior (retired)',
 };
 
 export const DETECTION_DESCRIPTIONS: Record<DetectionType, string> = {
   unattended_object:
     'Flags bags/backpacks/suitcases left stationary with no person nearby for the configured duration.',
-  loitering: 'Flags a person remaining inside the configured zone for the configured duration.',
-  running:
-    'Heuristic: flags fast bounding-box movement as a proxy for running. Not a trained action classifier.',
-  fighting:
-    'Heuristic: flags close proximity between two people combined with rapid, sustained limb movement. Prone to false positives from dancing, sports, or play.',
-  drowning:
-    'Heuristic: flags a mostly-vertical body posture with minimal forward progress inside a water zone. This is NOT a certified drowning-detection system — always keep human lifeguard supervision.',
-  intoxication:
-    'Heuristic: flags unsteady, erratic lateral movement (gait sway) as a rough proxy. Many conditions (injury, disability, fatigue) can trigger this — treat as an aid, not a diagnosis.',
-  apriltag: 'Decodes standard AprilTag 36h11 fiducial markers and looks up their linked LoRa device.',
+  apriltag: 'Decodes standard AprilTag 36h11 fiducial markers — the camera-visible identity credential.',
 };
 
 export const DETECTION_REQUIREMENTS: Record<DetectionType, DetectionRequirement> = {
   unattended_object: 'objects',
-  loitering: 'pose',
-  running: 'pose',
-  fighting: 'pose',
-  drowning: 'pose',
-  intoxication: 'pose',
   apriltag: 'apriltag',
 };

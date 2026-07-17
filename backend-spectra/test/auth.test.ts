@@ -167,7 +167,7 @@ describe('authorization: operator versus admin', () => {
     const created = await fetch(`${server.baseUrl}/api/vision/alerts`, {
       method: 'POST',
       headers: jsonHeaders(operatorCookie),
-      body: JSON.stringify({ cameraId: 'test-camera-alpha', type: 'running', confidence: 0.6, message: 'Test detection' }),
+      body: JSON.stringify({ cameraId: 'test-camera-alpha', type: 'unattended_object', confidence: 0.6, message: 'Test detection' }),
     });
     assert.equal(created.status, 201, 'an operator monitoring a camera submits detections');
     const alert = await readJson<{ _id: string }>(created);

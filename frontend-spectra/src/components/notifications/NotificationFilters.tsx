@@ -6,11 +6,11 @@ import {
   ALERT_SEVERITY_LABELS,
   ALERT_STATUSES,
   ALERT_STATUS_LABELS,
-  DETECTION_LABELS,
-  DETECTION_TYPES,
+  ALL_DETECTION_LABELS,
+  ALL_DETECTION_TYPES,
   type AlertSeverity,
   type AlertStatus,
-  type DetectionType,
+  type AnyDetectionType,
 } from '../../lib/vision/types';
 import { DEFAULT_CAMERA_ID } from '../../lib/vision/defaults';
 import { Select } from '../ui/Select';
@@ -20,7 +20,8 @@ import styles from './NotificationFilters.module.css';
 
 export interface NotificationFilterState {
   severity: AlertSeverity | 'all';
-  type: DetectionType | 'all';
+  /** Includes retired types so recorded history stays filterable. */
+  type: AnyDetectionType | 'all';
   status: AlertStatus | 'all';
   cameraId: string | 'all';
   zoneName: string | 'all';
@@ -74,11 +75,12 @@ export function NotificationFilters({ filters, cameras, zoneOptions, onChange, o
         ))}
       </Select>
 
-      <Select label="Type" value={filters.type} onChange={(e) => set('type', e.target.value as DetectionType | 'all')}>
+      <Select label="Type" value={filters.type} onChange={(e) => set('type', e.target.value as AnyDetectionType | 'all')}>
         <option value="all">All types</option>
-        {DETECTION_TYPES.map((type) => (
+        {/* Includes retired types: their alerts still exist and must stay findable. */}
+        {ALL_DETECTION_TYPES.map((type) => (
           <option key={type} value={type}>
-            {DETECTION_LABELS[type]}
+            {ALL_DETECTION_LABELS[type]}
           </option>
         ))}
       </Select>

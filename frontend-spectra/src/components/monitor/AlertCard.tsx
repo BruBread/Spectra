@@ -1,6 +1,6 @@
 import { Check, Radio, Wifi, WifiOff } from 'lucide-react';
 import type { AprilTagMapping, VisionAlert } from '../../lib/vision/types';
-import { DETECTION_LABELS } from '../../lib/vision/types';
+import { ALL_DETECTION_LABELS } from '../../lib/vision/types';
 import { Badge, type BadgeTone } from '../ui/Badge';
 import { RelativeTime } from '../ui/RelativeTime';
 import styles from './AlertCard.module.css';
@@ -35,7 +35,7 @@ export function AlertCard({ alert, mapping, persisted, onAcknowledge, onView }: 
 
       <div className={styles.body}>
         <div className={styles.topRow}>
-          <span className={styles.title}>{DETECTION_LABELS[alert.type]}</span>
+          <span className={styles.title}>{ALL_DETECTION_LABELS[alert.type]}</span>
           <Badge tone={toneForConfidence(alert.confidence)}>{Math.round(alert.confidence * 100)}% confidence</Badge>
         </div>
         <p className={styles.message}>{alert.message}</p>

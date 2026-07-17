@@ -3,16 +3,24 @@ import * as visionService from './vision.service.js';
 import {
   ALERT_SEVERITIES,
   ALERT_STATUSES,
+  ALL_DETECTION_TYPES,
   DETECTION_TYPES,
   type AlertSeverity,
   type AlertStatus,
+  type AnyDetectionType,
   type DetectionType,
 } from './vision.types.js';
 
 const DEFAULT_CAMERA_ID = 'webcam-default';
 
+/** Creation is limited to types the system can still produce. */
 function isDetectionType(value: unknown): value is DetectionType {
   return typeof value === 'string' && (DETECTION_TYPES as string[]).includes(value);
+}
+
+/** Filtering also accepts retired types, so recorded history stays searchable. */
+function isAnyDetectionType(value: unknown): value is AnyDetectionType {
+  return typeof value === 'string' && (ALL_DETECTION_TYPES as string[]).includes(value);
 }
 
 function isAlertSeverity(value: unknown): value is AlertSeverity {
@@ -151,8 +159,8 @@ export async function listAlerts(req: Request, res: Response, next: NextFunction
   try {
     const { cameraId, type, severity, zoneName, limit } = req.query;
 
-    if (type !== undefined && !isDetectionType(type)) {
-      res.status(400).json({ error: `type must be one of: ${DETECTION_TYPES.join(', ')}` });
+    if (type !== undefined && !isAnyDetectionType(type)) {
+      res.status(400).json({ error: `type must be one of: ${ALL_DETECTION_TYPES.join(', ')}` });
       return;
     }
     if (severity !== undefined && !isAlertSeverity(severity)) {
@@ -162,7 +170,7 @@ export async function listAlerts(req: Request, res: Response, next: NextFunction
 
     const alerts = await visionService.listAlerts({
       cameraId: typeof cameraId === 'string' ? cameraId : undefined,
-      type: isDetectionType(type) ? type : undefined,
+      type: isAnyDetectionType(type) ? type : undefined,
       severity: isAlertSeverity(severity) ? severity : undefined,
       status: parseStatusFilter(req.query.status),
       zoneName: typeof zoneName === 'string' ? zoneName : undefined,
@@ -194,8 +202,19 @@ export async function getAlertCounts(_req: Request, res: Response, next: NextFun
 export async function createAlert(req: Request, res: Response, next: NextFunction) {
   try {
     const { cameraId, type, confidence, message, severity, zoneName, snapshot, metadata } = req.body;
-    if (!cameraId || !isDetectionType(type) || typeof confidence !== 'number' || !message) {
+    if (!cameraId || typeof confidence !== 'number' || !message) {
       res.status(400).json({ error: 'cameraId, type, confidence (number), and message are required' });
+      return;
+    }
+    if (!isDetectionType(type)) {
+      // Naming the retired case explicitly: a client still sending one is out
+      // of date, and "invalid type" alone would not say why.
+      const retired = (ALL_DETECTION_TYPES as string[]).includes(String(type));
+      res.status(400).json({
+        error: retired
+          ? `Detection type "${type}" has been retired and can no longer be recorded. Active types: ${DETECTION_TYPES.join(', ')}`
+          : `type must be one of: ${DETECTION_TYPES.join(', ')}`,
+      });
       return;
     }
     if (severity !== undefined && !isAlertSeverity(severity)) {

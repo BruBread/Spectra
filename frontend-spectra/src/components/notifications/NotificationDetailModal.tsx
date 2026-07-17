@@ -3,8 +3,8 @@
 import Image from 'next/image';
 import { ExternalLink, ShieldQuestion } from 'lucide-react';
 import type { CameraRecord } from '../../lib/cameras/types';
-import { ALERT_STATUSES, ALERT_STATUS_LABELS, DETECTION_DESCRIPTIONS, type AlertStatus, type VisionAlert } from '../../lib/vision/types';
-import { SEVERITY_TONE, STATUS_TONE, alertTitle, confidencePercent, monitorHref, resolveCamera } from '../../lib/notifications/present';
+import { ALERT_STATUSES, ALERT_STATUS_LABELS, type AlertStatus, type VisionAlert } from '../../lib/vision/types';
+import { SEVERITY_TONE, STATUS_TONE, alertTitle, confidencePercent, detectionDescription, monitorHref, resolveCamera } from '../../lib/notifications/present';
 import { formatDateTime } from '../../lib/format';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
@@ -121,7 +121,7 @@ export function NotificationDetailModal({ alert, cameras, busy, onClose, onStatu
       <p className={styles.disclaimer}>
         <ShieldQuestion size={14} aria-hidden="true" />
         <span>
-          AI-assisted detection — a signal to review, not a confirmed incident. {DETECTION_DESCRIPTIONS[alert.type]}
+          AI-assisted detection — a signal to review, not a confirmed incident. {detectionDescription(alert.type)}
         </span>
       </p>
     </Modal>

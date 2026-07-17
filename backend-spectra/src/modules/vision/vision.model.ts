@@ -1,5 +1,5 @@
 import { Schema, model } from 'mongoose';
-import { ALERT_SEVERITIES, ALERT_STATUSES, DETECTION_TYPES } from './vision.types.js';
+import { ALERT_SEVERITIES, ALERT_STATUSES, ALL_DETECTION_TYPES, DETECTION_TYPES } from './vision.types.js';
 
 const zoneSchema = new Schema(
   {
@@ -53,7 +53,10 @@ export const AprilTagMapping = model('AprilTagMapping', aprilTagMappingSchema);
 const visionAlertSchema = new Schema(
   {
     cameraId: { type: String, required: true, index: true },
-    type: { type: String, enum: DETECTION_TYPES, required: true, index: true },
+    // Accepts retired types too, so alerts recorded before those detectors
+    // were removed stay valid documents. Creation is restricted to active
+    // types by the controller.
+    type: { type: String, enum: ALL_DETECTION_TYPES, required: true, index: true },
     severity: { type: String, enum: ALERT_SEVERITIES, required: true, default: 'warning' },
     status: { type: String, enum: ALERT_STATUSES, required: true, default: 'new' },
     read: { type: Boolean, required: true, default: false },

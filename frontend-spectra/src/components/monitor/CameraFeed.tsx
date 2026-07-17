@@ -57,14 +57,6 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
     }
 
     ctx.fillStyle = 'rgba(74, 222, 128, 0.9)';
-    for (const pose of tickResult.poses) {
-      for (const kp of pose.keypoints) {
-        if ((kp.score ?? 0) < 0.3) continue;
-        ctx.beginPath();
-        ctx.arc(kp.x, kp.y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
 
     ctx.lineWidth = 2;
     ctx.strokeStyle = 'rgba(244, 114, 182, 0.9)';
@@ -94,7 +86,7 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
     }
   }, [tickResult]);
 
-  const modelsLoading = modelStatus.objects === 'loading' || modelStatus.pose === 'loading';
+  const modelsLoading = modelStatus.objects === 'loading' || modelStatus.apriltag === 'loading';
 
   return (
     <div className={styles.wrapper}>
@@ -153,7 +145,6 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
             {cameraState === 'active' ? 'Camera live' : 'Camera off'}
           </Badge>
           <Badge tone={modelStatus.objects === 'ready' ? 'info' : 'neutral'}>Objects: {modelStatus.objects}</Badge>
-          <Badge tone={modelStatus.pose === 'ready' ? 'info' : 'neutral'}>Pose: {modelStatus.pose}</Badge>
         </div>
         {cameraState === 'active' ? (
           <Button variant="secondary" size="sm" onClick={stop}>

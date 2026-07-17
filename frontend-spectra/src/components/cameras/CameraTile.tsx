@@ -173,7 +173,7 @@ function StreamableTile({
       </span>
 
       {isDetectionCapable ? (
-        <Badge tone={modelStatus.objects === 'ready' || modelStatus.pose === 'ready' ? 'info' : 'neutral'} className={styles.detectionBadge}>
+        <Badge tone={modelStatus.objects === 'ready' || modelStatus.apriltag === 'ready' ? 'info' : 'neutral'} className={styles.detectionBadge}>
           <Radio size={11} aria-hidden="true" /> AI on
         </Badge>
       ) : null}

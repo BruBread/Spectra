@@ -30,7 +30,7 @@ interface AlertInput {
 export function alertBody(input: AlertInput = {}) {
   return {
     cameraId: input.cameraId ?? TEST_CAMERA_ID,
-    type: input.type ?? 'running',
+    type: input.type ?? 'unattended_object',
     confidence: input.confidence ?? 0.7,
     message: input.message ?? 'Test detection — synthetic fixture',
     ...(input.severity !== undefined && { severity: input.severity }),

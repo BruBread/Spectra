@@ -60,12 +60,7 @@ async function counts() {
 describe('alert creation and severity defaults', () => {
   it('defaults severity from the detection type', async () => {
     const cases: Array<[string, string]> = [
-      ['drowning', 'critical'],
-      ['fighting', 'critical'],
-      ['running', 'warning'],
-      ['loitering', 'warning'],
       ['unattended_object', 'warning'],
-      ['intoxication', 'warning'],
       ['apriltag', 'info'],
     ];
 
@@ -79,7 +74,7 @@ describe('alert creation and severity defaults', () => {
   });
 
   it('accepts an explicit severity override and a zone name', async () => {
-    const { alert } = await createAlert(alertBody({ type: 'running', severity: 'critical', zoneName: 'Test Zone 1' }));
+    const { alert } = await createAlert(alertBody({ type: 'unattended_object', severity: 'critical', zoneName: 'Test Zone 1' }));
     assert.equal(alert.severity, 'critical');
     assert.equal(alert.zoneName, 'Test Zone 1');
   });
@@ -101,6 +96,61 @@ describe('alert creation and severity defaults', () => {
       body: JSON.stringify({ cameraId: TEST_CAMERA_ID, type: 'not-a-type', confidence: 0.5, message: 'x' }),
     });
     assert.equal(response.status, 400);
+  });
+
+  it('refuses to record a retired detection type, and says so', async () => {
+    const response = await fetch(`${server.baseUrl}/api/vision/alerts`, {
+      method: 'POST',
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ cameraId: TEST_CAMERA_ID, type: 'drowning', confidence: 0.5, message: 'x' }),
+    });
+    assert.equal(response.status, 400);
+    const body = await readJson<{ error: string }>(response);
+    assert.match(body.error, /retired/i);
+  });
+});
+
+describe('retired detection types', () => {
+  /**
+   * The five pose-based detectors were removed from the product, but alerts
+   * they already recorded must survive: readable, listable and filterable.
+   * Inserted through the model directly because the API — correctly — refuses
+   * to create one.
+   */
+  it('keeps alerts recorded by removed detectors readable and filterable', async () => {
+    const mongoose = (await import('mongoose')).default;
+    await mongoose.connection.collection('visionalerts').insertOne({
+      cameraId: TEST_CAMERA_ID,
+      type: 'drowning',
+      severity: 'critical',
+      status: 'new',
+      read: false,
+      zoneName: null,
+      confidence: 0.8,
+      message: 'Historical alert from a retired detector',
+      snapshot: null,
+      metadata: {},
+      occurrences: 1,
+      lastOccurredAt: new Date(),
+      acknowledged: false,
+      createdAt: new Date(),
+    });
+
+    const all = await listAlerts('?limit=50');
+    assert.equal(all.alerts.length, 1);
+    assert.equal(all.alerts[0].type, 'drowning');
+    assert.equal(all.alerts[0].severity, 'critical', 'severity is stored per row, not re-derived');
+
+    const filtered = await listAlerts('?type=drowning&limit=50');
+    assert.equal(filtered.alerts.length, 1, 'history stays searchable by its own type');
+
+    // And it can still be triaged like any other record.
+    const response = await fetch(`${server.baseUrl}/api/vision/alerts/${all.alerts[0]._id}/status`, {
+      method: 'PATCH',
+      headers: jsonHeaders(cookie),
+      body: JSON.stringify({ status: 'resolved' }),
+    });
+    assert.equal(response.status, 200);
   });
 });
 
@@ -277,15 +327,15 @@ describe('counts', () => {
   it('reports unread, critical-open and new totals from real records', async () => {
     assert.deepEqual(await counts(), { unread: 0, criticalOpen: 0, new: 0 });
 
-    await createAlert(alertBody({ type: 'drowning', metadata: { trackId: 1 } }));
-    await createAlert(alertBody({ type: 'fighting', metadata: { trackId: 2 } }));
-    await createAlert(alertBody({ type: 'running', metadata: { trackId: 3 } }));
+    await createAlert(alertBody({ severity: 'critical', metadata: { trackId: 1 } }));
+    await createAlert(alertBody({ type: 'apriltag', severity: 'critical', metadata: { trackId: 2 } }));
+    await createAlert(alertBody({ metadata: { trackId: 3 } }));
 
     assert.deepEqual(await counts(), { unread: 3, criticalOpen: 2, new: 3 });
   });
 
   it('stops counting a critical alert as open once it is resolved', async () => {
-    const { alert } = await createAlert(alertBody({ type: 'drowning' }));
+    const { alert } = await createAlert(alertBody({ severity: 'critical' }));
     assert.equal((await counts()).criticalOpen, 1);
 
     await fetch(`${server.baseUrl}/api/vision/alerts/${alert._id}/status`, {
@@ -301,7 +351,7 @@ describe('counts', () => {
   });
 
   it('still counts an acknowledged critical alert as open', async () => {
-    const { alert } = await createAlert(alertBody({ type: 'drowning' }));
+    const { alert } = await createAlert(alertBody({ severity: 'critical' }));
     await fetch(`${server.baseUrl}/api/vision/alerts/${alert._id}/status`, {
       method: 'PATCH',
       headers: jsonHeaders(cookie),
@@ -313,15 +363,19 @@ describe('counts', () => {
 
 describe('filtering', () => {
   beforeEach(async () => {
-    await createAlert(alertBody({ type: 'drowning', cameraId: TEST_CAMERA_ID, zoneName: 'Test Zone 1', metadata: { trackId: 1 } }));
-    await createAlert(alertBody({ type: 'running', cameraId: TEST_CAMERA_ID, metadata: { trackId: 2 } }));
-    await createAlert(alertBody({ type: 'loitering', cameraId: TEST_CAMERA_ID_B, metadata: { trackId: 3 } }));
+    // Severity comes from explicit overrides now that the critical-by-default
+    // types are retired; the filters under test key on the stored value.
+    await createAlert(
+      alertBody({ type: 'unattended_object', severity: 'critical', cameraId: TEST_CAMERA_ID, zoneName: 'Test Zone 1', metadata: { trackId: 1 } }),
+    );
+    await createAlert(alertBody({ type: 'apriltag', severity: 'warning', cameraId: TEST_CAMERA_ID, metadata: { trackId: 2 } }));
+    await createAlert(alertBody({ type: 'unattended_object', cameraId: TEST_CAMERA_ID_B, metadata: { trackId: 3 } }));
   });
 
   it('filters by severity, type, camera and zone', async () => {
     assert.equal((await listAlerts('?severity=critical&limit=50')).alerts.length, 1);
     assert.equal((await listAlerts('?severity=warning&limit=50')).alerts.length, 2);
-    assert.equal((await listAlerts('?type=running&limit=50')).alerts.length, 1);
+    assert.equal((await listAlerts('?type=apriltag&limit=50')).alerts.length, 1);
     assert.equal((await listAlerts(`?cameraId=${TEST_CAMERA_ID}&limit=50`)).alerts.length, 2);
     assert.equal((await listAlerts('?zoneName=Test%20Zone%201&limit=50')).alerts.length, 1);
   });
@@ -366,7 +420,7 @@ describe('filtering', () => {
   it('combines filters', async () => {
     const { alerts } = await listAlerts(`?severity=warning&cameraId=${TEST_CAMERA_ID}&status=new&limit=50`);
     assert.equal(alerts.length, 1);
-    assert.equal(alerts[0].type, 'running');
+    assert.equal(alerts[0].type, 'apriltag');
   });
 
   it('returns newest first', async () => {

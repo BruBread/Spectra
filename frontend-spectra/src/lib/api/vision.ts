@@ -1,6 +1,7 @@
 import type {
   AlertSeverity,
   AlertStatus,
+  AnyDetectionType,
   AprilTagMapping,
   DetectionType,
   NewVisionAlert,
@@ -98,7 +99,8 @@ export async function deleteAprilTagMapping(id: string): Promise<ApiResult<null>
 
 export interface AlertQuery {
   cameraId?: string;
-  type?: DetectionType;
+  /** Retired types are queryable: their alerts still exist. */
+  type?: AnyDetectionType;
   severity?: AlertSeverity;
   /** Multiple statuses are sent comma-separated, which the backend accepts. */
   status?: AlertStatus[];

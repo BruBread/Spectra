@@ -9,9 +9,28 @@ let api: APIRequestContext;
  * record.
  */
 const SEEDED = {
-  drowning: { type: 'drowning', confidence: 0.81, message: 'E2E fixture — possible swimmer distress', trackId: 'e2e-1' },
-  fighting: { type: 'fighting', confidence: 0.72, message: 'E2E fixture — possible altercation', trackId: 'e2e-2' },
-  running: { type: 'running', confidence: 0.66, message: 'E2E fixture — running detected', trackId: 'e2e-3' },
+  // Severity is set explicitly: the active detectors default to warning/info,
+  // and these specs are about how severity renders, not how it's derived.
+  critical: {
+    type: 'unattended_object',
+    severity: 'critical',
+    confidence: 0.81,
+    message: 'E2E fixture — unattended object, critical',
+    trackId: 'e2e-1',
+  },
+  criticalTag: {
+    type: 'apriltag',
+    severity: 'critical',
+    confidence: 0.72,
+    message: 'E2E fixture — apriltag, critical',
+    trackId: 'e2e-2',
+  },
+  warning: {
+    type: 'unattended_object',
+    confidence: 0.66,
+    message: 'E2E fixture — unattended object, warning',
+    trackId: 'e2e-3',
+  },
 };
 
 test.beforeAll(async () => {
@@ -28,9 +47,9 @@ test.beforeEach(async () => {
 });
 
 async function seedThree() {
-  await seedAlert(api, SEEDED.drowning);
-  await seedAlert(api, SEEDED.fighting);
-  await seedAlert(api, SEEDED.running);
+  await seedAlert(api, SEEDED.critical);
+  await seedAlert(api, SEEDED.criticalTag);
+  await seedAlert(api, SEEDED.warning);
 }
 
 const rows = '[data-severity][data-unread]';
@@ -51,12 +70,12 @@ test.describe('notifications page', () => {
 
     await expect(page.locator(rows)).toHaveCount(3);
 
-    const drowning = rowWith(page, 'Drowning Posture');
-    await expect(drowning).toHaveCount(1);
-    await expect(drowning).toContainText(SEEDED.drowning.message);
-    await expect(drowning).toContainText('critical');
-    await expect(drowning).toContainText('81% confidence');
-    await expect(drowning).toContainText('New');
+    const critical = rowWith(page, SEEDED.critical.message);
+    await expect(critical).toHaveCount(1);
+    await expect(critical).toContainText('Unattended Object');
+    await expect(critical).toContainText('critical');
+    await expect(critical).toContainText('81% confidence');
+    await expect(critical).toContainText('New');
     await expect(page.getByText(/not a confirmed incident/i)).toBeVisible();
   });
 
@@ -89,9 +108,10 @@ test.describe('notifications page', () => {
     await page.getByLabel('Severity', { exact: true }).selectOption('critical');
     await expect(page.locator(rows)).toHaveCount(2);
 
-    await page.getByLabel('Type', { exact: true }).selectOption('running');
-    // Critical + running matches nothing: the empty state must say so rather
-    // than claim there are no alerts at all.
+    // critical + apriltag matches one; critical + a retired type matches none.
+    await page.getByLabel('Type', { exact: true }).selectOption('drowning');
+    // Nothing matches: the empty state must say so rather than claim there
+    // are no alerts at all.
     await expect(page.getByText('No notifications match these filters')).toBeVisible();
 
     await page.getByRole('button', { name: 'Clear filters' }).first().click();
@@ -111,7 +131,7 @@ test.describe('notifications page', () => {
   });
 
   test('changing status persists across a reload', async ({ page }) => {
-    await seedAlert(api, SEEDED.running);
+    await seedAlert(api, SEEDED.warning);
     await loginViaUi(page);
     await page.goto('/notifications');
 
@@ -141,7 +161,7 @@ test.describe('notifications page', () => {
 
   test('resolves the camera and deep-links a registered one to Monitor', async ({ page }) => {
     const cameraId = await seedCamera(api);
-    await seedAlert(api, { ...SEEDED.running, cameraId });
+    await seedAlert(api, { ...SEEDED.warning, cameraId });
     await loginViaUi(page);
     await page.goto('/notifications');
 
@@ -161,7 +181,7 @@ test.describe('notifications page', () => {
   });
 
   test('shows no Monitor link for an alert whose camera is not registered', async ({ page }) => {
-    await seedAlert(api, SEEDED.running); // cameraId has no camera record
+    await seedAlert(api, SEEDED.warning); // cameraId has no camera record
     await loginViaUi(page);
     await page.goto('/notifications');
 
@@ -188,12 +208,11 @@ test.describe('top-bar notification indicator', () => {
   });
 
   test('lists real alerts in the bell and none when empty', async ({ page }) => {
-    await seedAlert(api, SEEDED.drowning);
+    await seedAlert(api, SEEDED.critical);
     await loginViaUi(page);
 
     await page.getByRole('button', { name: 'Notifications' }).click();
-    await expect(page.getByText('Drowning Posture').first()).toBeVisible();
-    await expect(page.getByText(SEEDED.drowning.message).first()).toBeVisible();
+    await expect(page.getByText(SEEDED.critical.message).first()).toBeVisible();
   });
 
   test('shows no badge at all when the counts request fails', async ({ page }) => {
@@ -213,7 +232,7 @@ test.describe('dashboard alert preview', () => {
     await page.goto('/');
 
     await expect(page.getByText('Recent Alerts')).toBeVisible();
-    await expect(page.getByText('Drowning Posture').first()).toBeVisible();
+    await expect(page.getByText('Unattended Object').first()).toBeVisible();
     await expect(page.getByRole('link', { name: /View all notifications/ })).toBeVisible();
   });
 

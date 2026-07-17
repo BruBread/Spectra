@@ -373,7 +373,7 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 |---|---|
 | `_id` | Alert id |
 | `cameraId` | Camera the detection came from |
-| `type` | `unattended_object`, `loitering`, `running`, `fighting`, `drowning`, `intoxication`, `apriltag` |
+| `type` | `unattended_object`, `apriltag`. Alerts recorded before the pose-based detectors were removed may also carry a retired type — see [Retired detection types](#retired-detection-types) |
 | `severity` | `info` \| `warning` \| `critical` |
 | `status` | `new` \| `acknowledged` \| `under_review` \| `resolved` \| `dismissed` |
 | `read` | Read/unread state for notification badges |
@@ -386,9 +386,37 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 | `acknowledged` | **Legacy.** Kept in sync with `status`: `true` for any status other than `new` |
 | `createdAt` | First occurrence |
 
-Severity defaults per type when the client doesn't send one: `drowning` and
-`fighting` are `critical`, `apriltag` is `info`, everything else is
-`warning`.
+Severity defaults per type when the client doesn't send one: `apriltag` is
+`info`, everything else is `warning`. A client may send an explicit
+`severity` to override it.
+
+### Retired detection types
+
+The pose-based behaviour heuristics — `drowning`, `fighting`, `running`,
+`loitering`, `intoxication` — were **removed from the product**. They guessed
+at intent from body geometry and were never reliable enough to act on, so
+nothing raises them any more and `POST /alerts` rejects them with an
+explanatory error.
+
+Alerts those detectors already recorded are **not** rewritten or deleted:
+they remain valid documents, keep their stored severity, stay filterable by
+their own type, and render with a `(retired)` label so history is never
+mistaken for something the system still watches for.
+
+Their per-camera detector settings are stripped at boot
+(`stripRetiredDetectorSettings`), which is required rather than cosmetic —
+`getSettings()` saves the document, and a leftover retired detector config
+would fail validation on the first read.
+
+For a local or development database whose retired-type alerts are just stale
+test data, an opt-in command removes them. It refuses to run against
+production, where that history is real:
+
+```bash
+cd backend-spectra
+npm run purge:retired-alerts              # dry run — reports what it would delete
+npm run purge:retired-alerts -- --confirm # actually delete
+```
 
 ### Endpoints
 

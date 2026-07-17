@@ -1,21 +1,31 @@
-export type DetectionType =
-  | 'unattended_object'
-  | 'loitering'
-  | 'running'
-  | 'fighting'
-  | 'drowning'
-  | 'intoxication'
-  | 'apriltag';
+/** Detection types the system can produce today. */
+export type DetectionType = 'unattended_object' | 'apriltag';
 
-export const DETECTION_TYPES: DetectionType[] = [
-  'unattended_object',
+export const DETECTION_TYPES: DetectionType[] = ['unattended_object', 'apriltag'];
+
+/**
+ * Types that were removed from the product.
+ *
+ * The heuristics behind these (pose-based drowning/fighting/running/
+ * loitering/intoxication guesses) are gone, so no new alert can be created
+ * with them. They stay listed here purely so alerts already recorded remain
+ * readable, filterable and renderable — history is not rewritten to match a
+ * later product decision.
+ */
+export type RetiredDetectionType = 'loitering' | 'running' | 'fighting' | 'drowning' | 'intoxication';
+
+export const RETIRED_DETECTION_TYPES: RetiredDetectionType[] = [
   'loitering',
   'running',
   'fighting',
   'drowning',
   'intoxication',
-  'apriltag',
 ];
+
+/** Anything that may appear on a stored alert: active types plus history. */
+export type AnyDetectionType = DetectionType | RetiredDetectionType;
+
+export const ALL_DETECTION_TYPES: AnyDetectionType[] = [...DETECTION_TYPES, ...RETIRED_DETECTION_TYPES];
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
@@ -29,20 +39,16 @@ export const ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under_revi
 export const OPEN_ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under_review'];
 
 const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
-  drowning: 'critical',
-  fighting: 'critical',
-  running: 'warning',
-  loitering: 'warning',
   unattended_object: 'warning',
-  intoxication: 'warning',
   apriltag: 'info',
 };
 
 /**
- * Severity a detection gets when the client doesn't send one. Types added in
- * later phases slot in here: `fall` is critical; `restricted_zone` and
- * `suspicious_activity` are warning (a restricted zone can raise its own
- * alerts to critical through per-zone config).
+ * Severity a detection gets when the client doesn't send one.
+ *
+ * Only active types need an entry: this runs when an alert is created, and a
+ * retired type can no longer be created. Alerts already stored keep the
+ * severity recorded on the row itself.
  */
 export function defaultSeverityForType(type: DetectionType): AlertSeverity {
   return SEVERITY_BY_TYPE[type] ?? 'warning';
@@ -75,11 +81,6 @@ export interface DetectionTypeConfig {
 
 const BASE_DETECTORS: DetectionTypeConfig[] = [
   { type: 'unattended_object', enabled: true, confidenceThreshold: 0.6, cooldownSeconds: 60, durationThresholdSeconds: 30, zone: null },
-  { type: 'loitering', enabled: true, confidenceThreshold: 0.5, cooldownSeconds: 120, durationThresholdSeconds: 20, zone: null },
-  { type: 'running', enabled: true, confidenceThreshold: 0.55, cooldownSeconds: 30, durationThresholdSeconds: 1.5, zone: null },
-  { type: 'fighting', enabled: true, confidenceThreshold: 0.55, cooldownSeconds: 30, durationThresholdSeconds: 1.5, zone: null },
-  { type: 'drowning', enabled: true, confidenceThreshold: 0.5, cooldownSeconds: 45, durationThresholdSeconds: 5, zone: null },
-  { type: 'intoxication', enabled: true, confidenceThreshold: 0.5, cooldownSeconds: 60, durationThresholdSeconds: 5, zone: null },
   { type: 'apriltag', enabled: true, confidenceThreshold: 0.7, cooldownSeconds: 20, durationThresholdSeconds: 0, zone: null },
 ];
 

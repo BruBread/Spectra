@@ -7,6 +7,7 @@ import {
   defaultSeverityForType,
   type AlertSeverity,
   type AlertStatus,
+  type AnyDetectionType,
   type DetectionType,
 } from './vision.types.js';
 
@@ -79,7 +80,8 @@ export function deleteAprilTagMapping(id: string) {
 
 interface ListAlertsParams {
   cameraId?: string;
-  type?: DetectionType;
+  /** Retired types are queryable so recorded history stays searchable. */
+  type?: AnyDetectionType;
   severity?: AlertSeverity;
   status?: AlertStatus[];
   zoneName?: string;

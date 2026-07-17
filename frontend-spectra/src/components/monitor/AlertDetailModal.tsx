@@ -1,6 +1,7 @@
 import { Radio } from 'lucide-react';
 import type { AprilTagMapping, VisionAlert } from '../../lib/vision/types';
-import { DETECTION_LABELS, DETECTION_DESCRIPTIONS } from '../../lib/vision/types';
+import { ALL_DETECTION_LABELS } from '../../lib/vision/types';
+import { detectionDescription } from '../../lib/notifications/present';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
 import { formatDateTime } from '../../lib/format';
@@ -17,7 +18,7 @@ export function AlertDetailModal({ alert, mapping, onClose }: AlertDetailModalPr
   const tagId = alert.type === 'apriltag' ? (alert.metadata.tagId as number | undefined) : undefined;
 
   return (
-    <Modal open={Boolean(alert)} onClose={onClose} title={DETECTION_LABELS[alert.type]} size="md">
+    <Modal open={Boolean(alert)} onClose={onClose} title={ALL_DETECTION_LABELS[alert.type]} size="md">
       <div className={styles.wrapper}>
         {alert.snapshot ? (
           // eslint-disable-next-line @next/next/no-img-element -- data-URL snapshot
@@ -65,7 +66,7 @@ export function AlertDetailModal({ alert, mapping, onClose }: AlertDetailModalPr
         ) : null}
 
         <p className={styles.message}>{alert.message}</p>
-        <p className={styles.disclaimer}>{DETECTION_DESCRIPTIONS[alert.type]}</p>
+        <p className={styles.disclaimer}>{detectionDescription(alert.type)}</p>
       </div>
     </Modal>
   );
