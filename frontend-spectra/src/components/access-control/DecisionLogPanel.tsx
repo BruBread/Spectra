@@ -5,15 +5,20 @@ import { FileClock, Loader2, Lock, PlugZap, RefreshCw, SearchX } from 'lucide-re
 import { useCameraSources } from '../../context/CameraSourcesContext';
 import { failed, loaded, loading, type LoadState } from '../../lib/accessControl/loadState';
 import {
+  ACTION_LABELS,
   DECISION_LABELS,
-  IDENTITY_STATE_LABELS,
-  type IdentityState,
+  RULE_LABELS,
+  RULE_SOURCE_LABELS,
+  SUBJECT_LABELS,
+  UNIDENTIFIED_REASON_LABELS,
+  type ActionKey,
   type PolicyDecision,
   type PolicyDecisionOutcome,
+  type PolicyRuleSource,
+  type PolicySubject,
 } from '../../lib/accessControl/types';
 import { fetchPolicyDecisions } from '../../lib/api/accessControl';
 import { formatDateTime } from '../../lib/format';
-import { ALL_DETECTION_LABELS, ALL_DETECTION_TYPES, type AnyDetectionType } from '../../lib/vision/types';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -24,12 +29,15 @@ import styles from './accessControl.module.css';
 
 interface Filters {
   decision: PolicyDecisionOutcome | 'all';
-  identityState: IdentityState | 'all';
-  detectionType: AnyDetectionType | 'all';
+  subject: PolicySubject | 'all';
+  action: ActionKey | 'all';
+  ruleSource: PolicyRuleSource | 'all';
   cameraId: string;
 }
 
-const EMPTY_FILTERS: Filters = { decision: 'all', identityState: 'all', detectionType: 'all', cameraId: 'all' };
+const EMPTY_FILTERS: Filters = { decision: 'all', subject: 'all', action: 'all', ruleSource: 'all', cameraId: 'all' };
+
+const ACTION_KEYS: ActionKey[] = ['restricted_area', 'possible_weapon', 'unattended_object'];
 
 export function DecisionLogPanel() {
   const { cameras } = useCameraSources();
@@ -38,16 +46,18 @@ export function DecisionLogPanel() {
 
   const filtersActive =
     filters.decision !== 'all' ||
-    filters.identityState !== 'all' ||
-    filters.detectionType !== 'all' ||
+    filters.subject !== 'all' ||
+    filters.action !== 'all' ||
+    filters.ruleSource !== 'all' ||
     filters.cameraId !== 'all';
 
   const load = useCallback(async () => {
     setDecisions(loading([]));
     const result = await fetchPolicyDecisions({
       decision: filters.decision === 'all' ? undefined : filters.decision,
-      identityState: filters.identityState === 'all' ? undefined : filters.identityState,
-      detectionType: filters.detectionType === 'all' ? undefined : filters.detectionType,
+      subject: filters.subject === 'all' ? undefined : filters.subject,
+      action: filters.action === 'all' ? undefined : filters.action,
+      ruleSource: filters.ruleSource === 'all' ? undefined : filters.ruleSource,
       cameraId: filters.cameraId === 'all' ? undefined : filters.cameraId,
     });
     setDecisions(result.ok && result.data ? loaded(result.data) : failed([], result.error ?? 'Could not load the decision log.'));
@@ -63,22 +73,25 @@ export function DecisionLogPanel() {
   const columns: Column<PolicyDecision>[] = [
     { key: 'time', header: 'When', render: (row) => formatDateTime(row.createdAt) },
     {
-      key: 'detection',
-      header: 'Detection',
+      key: 'action',
+      header: 'Action',
       render: (row) => (
         <div className={styles.cellStack}>
-          <span>{ALL_DETECTION_LABELS[row.detectionType as AnyDetectionType] ?? row.detectionType}</span>
+          <span>{ACTION_LABELS[row.action] ?? row.action}</span>
           <span className={styles.cellMuted}>{cameraLabel(row.cameraId)}</span>
         </div>
       ),
     },
     { key: 'zone', header: 'Zone', render: (row) => row.zoneName ?? <span className={styles.cellMuted}>—</span> },
     {
-      key: 'identity',
-      header: 'Identity',
+      key: 'subject',
+      header: 'Subject',
       render: (row) => (
         <div className={styles.cellStack}>
-          <span>{IDENTITY_STATE_LABELS[row.identityState]}</span>
+          <span>{SUBJECT_LABELS[row.subject]}</span>
+          {row.subject === 'unidentified_person' && row.unidentifiedReason ? (
+            <span className={styles.cellMuted}>{UNIDENTIFIED_REASON_LABELS[row.unidentifiedReason]}</span>
+          ) : null}
           {row.personName ? (
             <span className={styles.cellMuted}>
               {row.personName}
@@ -90,8 +103,20 @@ export function DecisionLogPanel() {
       ),
     },
     {
+      key: 'rule',
+      header: 'Rule',
+      render: (row) => (
+        <div className={styles.cellStack}>
+          <Badge tone={row.ruleApplied === 'allow' ? 'warning' : 'neutral'}>{RULE_LABELS[row.ruleApplied]}</Badge>
+          {/* "unidentified policy applied" vs "someone's role rule" vs "nobody
+              wrote one" — the distinction the audit trail exists to record. */}
+          <span className={styles.cellMuted}>{RULE_SOURCE_LABELS[row.ruleSource]}</span>
+        </div>
+      ),
+    },
+    {
       key: 'decision',
-      header: 'Decision',
+      header: 'Outcome',
       render: (row) => (
         <Badge tone={row.decision === 'suppressed' ? 'neutral' : 'warning'}>{DECISION_LABELS[row.decision]}</Badge>
       ),
@@ -112,37 +137,48 @@ export function DecisionLogPanel() {
       <div className={styles.toolbar}>
         <div className={styles.filters}>
           <Select
-            label="Decision"
+            label="Outcome"
             className={styles.filterField}
             value={filters.decision}
             onChange={(event) => setFilters({ ...filters, decision: event.target.value as Filters['decision'] })}
           >
-            <option value="all">All decisions</option>
+            <option value="all">All outcomes</option>
             <option value="alert_created">Alert created</option>
             <option value="suppressed">Suppressed</option>
           </Select>
           <Select
-            label="Identity"
+            label="Subject"
             className={styles.filterField}
-            value={filters.identityState}
-            onChange={(event) => setFilters({ ...filters, identityState: event.target.value as Filters['identityState'] })}
+            value={filters.subject}
+            onChange={(event) => setFilters({ ...filters, subject: event.target.value as Filters['subject'] })}
           >
-            <option value="all">All</option>
-            <option value="identified">Identified</option>
-            <option value="unidentified">Unidentified</option>
+            <option value="all">All subjects</option>
+            <option value="person">Identified person</option>
+            <option value="unidentified_person">Unidentified</option>
           </Select>
           <Select
-            label="Detection"
+            label="Action"
             className={styles.filterField}
-            value={filters.detectionType}
-            onChange={(event) => setFilters({ ...filters, detectionType: event.target.value as Filters['detectionType'] })}
+            value={filters.action}
+            onChange={(event) => setFilters({ ...filters, action: event.target.value as Filters['action'] })}
           >
-            <option value="all">All types</option>
-            {ALL_DETECTION_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {ALL_DETECTION_LABELS[type]}
+            <option value="all">All actions</option>
+            {ACTION_KEYS.map((action) => (
+              <option key={action} value={action}>
+                {ACTION_LABELS[action]}
               </option>
             ))}
+          </Select>
+          <Select
+            label="Rule source"
+            className={styles.filterField}
+            value={filters.ruleSource}
+            onChange={(event) => setFilters({ ...filters, ruleSource: event.target.value as Filters['ruleSource'] })}
+          >
+            <option value="all">All sources</option>
+            <option value="role">Role rule</option>
+            <option value="unidentified_policy">Unidentified policy</option>
+            <option value="default">Default (restrict)</option>
           </Select>
           <Select
             label="Camera"

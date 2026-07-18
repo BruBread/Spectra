@@ -5,23 +5,25 @@ import { Loader2, PlugZap, Plus, ShieldAlert, ShieldQuestion } from 'lucide-reac
 import { useCameraSources } from '../../context/CameraSourcesContext';
 import { useToast } from '../../context/ToastContext';
 import type { LoadState } from '../../lib/accessControl/loadState';
-import type { AccessRole, ActionRule, RestrictedZone } from '../../lib/accessControl/types';
-import { deleteRole, updateRole, updateRoleZonePermissions } from '../../lib/api/accessControl';
+import type { AccessRole, ActionDefinition, ActionRule, RestrictedZone } from '../../lib/accessControl/types';
+import { deleteRole, updateRole, updateRolePermissions } from '../../lib/api/accessControl';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { EmptyState } from '../ui/EmptyState';
+import { ActionRulesEditor } from './ActionRulesEditor';
 import { RoleFormModal } from './RoleFormModal';
 import styles from './accessControl.module.css';
 
 interface RolesPanelProps {
   roles: LoadState<AccessRole[]>;
   zones: LoadState<RestrictedZone[]>;
+  catalog: LoadState<ActionDefinition[]>;
   canEdit: boolean;
   onRolesChanged: () => void;
 }
 
-export function RolesPanel({ roles, zones, canEdit, onRolesChanged }: RolesPanelProps) {
+export function RolesPanel({ roles, zones, catalog, canEdit, onRolesChanged }: RolesPanelProps) {
   const { showToast } = useToast();
   const { cameras } = useCameraSources();
   const [editing, setEditing] = useState<AccessRole | null>(null);
@@ -30,31 +32,9 @@ export function RolesPanel({ roles, zones, canEdit, onRolesChanged }: RolesPanel
 
   const cameraName = (cameraId: string) => cameras.find((camera) => camera.id === cameraId)?.name ?? 'Unregistered camera';
 
-  /**
-   * Zones this role can be granted: every active zone, plus any archived zone
-   * it already allows — hiding the latter would present a permission that
-   * exists as though it didn't.
-   */
-  const zonesFor = (role: AccessRole) =>
-    zones.data.filter((zone) => zone.active || isAllowed(role, zone.id));
-
-  const isAllowed = (role: AccessRole, zoneId: string) =>
-    role.permissions.actions.some(
-      (entry) => entry.action === 'restricted_area' && entry.zoneId === zoneId && entry.rule === 'allow',
-    );
-
-  const handleToggleZone = async (role: AccessRole, zoneId: string, allowed: boolean) => {
-    // Only `allow` rules are written from this checkbox. An unticked zone is
-    // left unwritten rather than stored as an explicit `restrict`: both deny,
-    // and this two-state control cannot express the difference between "denied"
-    // and "somebody considered it and denied it".
-    const next: ActionRule[] = role.permissions.actions.filter(
-      (entry) => entry.action === 'restricted_area' && entry.zoneId !== zoneId && entry.rule === 'allow',
-    );
-    if (allowed) next.push({ action: 'restricted_area', zoneId, rule: 'allow' });
-
+  const handleRulesChange = async (role: AccessRole, nextRules: ActionRule[]) => {
     setBusyId(role.id);
-    const result = await updateRoleZonePermissions(role, next);
+    const result = await updateRolePermissions(role.id, nextRules);
     setBusyId(null);
 
     if (!result.ok) {
@@ -97,7 +77,7 @@ export function RolesPanel({ roles, zones, canEdit, onRolesChanged }: RolesPanel
       <div className={styles.caution}>
         <ShieldAlert size={16} aria-hidden="true" />
         <span>
-          Permissions here are configuration only. No detector or policy engine reads them yet, so nothing on this page
+          Rules here are configuration only. No detector or policy engine reads them yet, so nothing on this page
           changes what the cameras currently do.
         </span>
       </div>
@@ -142,101 +122,55 @@ export function RolesPanel({ roles, zones, canEdit, onRolesChanged }: RolesPanel
         </Card>
       ) : (
         <div className={styles.cardList}>
-          {roles.data.map((role) => {
-            const selectableZones = zonesFor(role);
-            return (
-              // The key doubles as a stable test hook: role names are editable,
-              // keys are not.
-              <Card key={role.id} data-role-key={role.key}>
-                <div className={styles.cardTop}>
-                  <div>
-                    <div className={styles.cardTitleRow}>
-                      <span className={styles.cardTitle}>{role.name}</span>
-                      <span className={styles.mono}>{role.key}</span>
-                      <Badge tone={role.active ? 'success' : 'neutral'}>{role.active ? 'Active' : 'Deactivated'}</Badge>
-                      {/* No control for these — the catalog marks them
-                          unconfigurable. They are still shown when set, because
-                          hiding a permission that exists is worse than showing
-                          one that is inert. */}
-                      {role.permissions.actions
-                        .filter((rule) => rule.action !== 'restricted_area' && rule.rule === 'allow')
-                        .map((rule) => (
-                          <Badge key={rule.action} tone="warning">
-                            {rule.action} allowed — not enforced
-                          </Badge>
-                        ))}
-                    </div>
-                    {role.description ? <p className={styles.cardDescription}>{role.description}</p> : null}
+          {roles.data.map((role) => (
+            // The key doubles as a stable test hook: role names are editable,
+            // keys are not.
+            <Card key={role.id} data-role-key={role.key}>
+              <div className={styles.cardTop}>
+                <div>
+                  <div className={styles.cardTitleRow}>
+                    <span className={styles.cardTitle}>{role.name}</span>
+                    <span className={styles.mono}>{role.key}</span>
+                    <Badge tone={role.active ? 'success' : 'neutral'}>{role.active ? 'Active' : 'Deactivated'}</Badge>
                   </div>
-
-                  {canEdit ? (
-                    <div className={styles.rowActions}>
-                      <Button variant="secondary" size="sm" onClick={() => setEditing(role)}>
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={busyId === role.id}
-                        onClick={() => void handleToggleActive(role)}
-                      >
-                        {role.active ? 'Deactivate' : 'Reactivate'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={busyId === role.id}
-                        onClick={() => void handleDelete(role)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  ) : null}
+                  {role.description ? <p className={styles.cardDescription}>{role.description}</p> : null}
                 </div>
 
-                <div className={styles.permissions}>
-                  <p className={styles.permissionsHeading}>Restricted zone access</p>
+                {canEdit ? (
+                  <div className={styles.rowActions}>
+                    <Button variant="secondary" size="sm" onClick={() => setEditing(role)}>
+                      Edit
+                    </Button>
+                    <Button variant="ghost" size="sm" disabled={busyId === role.id} onClick={() => void handleToggleActive(role)}>
+                      {role.active ? 'Deactivate' : 'Reactivate'}
+                    </Button>
+                    <Button variant="ghost" size="sm" disabled={busyId === role.id} onClick={() => void handleDelete(role)}>
+                      Delete
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
 
-                  {zones.status === 'loading' ? (
-                    <p className={styles.emptyPermission}>Loading zones…</p>
-                  ) : zones.status === 'error' ? (
-                    <p className={styles.emptyPermission}>
-                      Zones could not be loaded, so this role’s zone permissions cannot be shown or changed.
-                    </p>
-                  ) : selectableZones.length === 0 ? (
-                    // Controls appear only once there is something real to
-                    // grant: an empty permission list would otherwise look
-                    // like a decision rather than an absence.
-                    <p className={styles.emptyPermission}>
-                      No restricted zones exist yet. Create one under Restricted Zones to grant this role access.
-                    </p>
-                  ) : (
-                    <div className={styles.zoneChecks}>
-                      {selectableZones.map((zone) => (
-                        <label key={zone.id} className={styles.zoneCheck}>
-                          <input
-                            type="checkbox"
-                            checked={isAllowed(role, zone.id)}
-                            disabled={!canEdit || busyId === role.id}
-                            onChange={(event) => void handleToggleZone(role, zone.id, event.target.checked)}
-                          />
-                          <span>{zone.name}</span>
-                          <span className={styles.zoneCheckMeta}>
-                            {cameraName(zone.cameraId)}
-                            {zone.active ? '' : ' · archived'}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-
+              <div className={styles.permissions}>
+                <p className={styles.permissionsHeading}>Action rules</p>
+                {catalog.status === 'error' ? (
                   <p className={styles.emptyPermission}>
-                    A zone that is not ticked is denied — absence is not permission.
+                    The action catalog could not be loaded, so rules cannot be shown or changed.
                   </p>
-                </div>
-              </Card>
-            );
-          })}
+                ) : (
+                  <ActionRulesEditor
+                    catalog={catalog.data}
+                    zones={zones}
+                    rules={role.permissions.actions}
+                    canEdit={canEdit}
+                    busy={busyId === role.id}
+                    cameraName={cameraName}
+                    onChange={(nextRules) => void handleRulesChange(role, nextRules)}
+                  />
+                )}
+              </div>
+            </Card>
+          ))}
         </div>
       )}
 

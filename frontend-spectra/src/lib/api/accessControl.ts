@@ -1,21 +1,39 @@
 import type {
   AccessRole,
+  ActionDefinition,
   ActionKey,
   ActionRule,
-  IdentityState,
   LoraDevice,
   Person,
   PersonRoleRef,
   PolicyDecision,
   PolicyDecisionOutcome,
+  PolicyRule,
+  PolicyRuleSource,
+  PolicySubject,
   RolePermissions,
   RestrictedZone,
+  UnidentifiedPolicy,
   ZoneRect,
 } from '../accessControl/types';
 import type { ApiResult } from './client';
 import { request } from './client';
 
 type Raw = Record<string, unknown>;
+
+/** The rules understood everywhere a rule is stored. Anything else normalizes to restrict. */
+function normalizeRule(value: unknown): PolicyRule {
+  return value === 'allow' ? 'allow' : 'restrict';
+}
+
+function normalizeActionRule(raw: unknown): ActionRule {
+  const rule = raw as { action?: unknown; zoneId?: unknown; rule?: unknown };
+  return {
+    action: String(rule.action) as ActionKey,
+    zoneId: rule.zoneId ? String(rule.zoneId) : null,
+    rule: normalizeRule(rule.rule),
+  };
+}
 
 function id(raw: Raw): string {
   return String(raw._id ?? raw.id);
@@ -34,16 +52,7 @@ function optionalNumber(value: unknown): number | null {
 function normalizePermissions(raw: unknown): RolePermissions {
   const permissions = (raw ?? {}) as { actions?: unknown };
   const actions = Array.isArray(permissions.actions) ? permissions.actions : [];
-  return {
-    actions: actions.map((entry) => {
-      const rule = entry as { action?: unknown; zoneId?: unknown; rule?: unknown };
-      return {
-        action: String(rule.action) as ActionKey,
-        zoneId: rule.zoneId ? String(rule.zoneId) : null,
-        rule: rule.rule === 'allow' ? 'allow' : 'restrict',
-      };
-    }),
-  };
+  return { actions: actions.map(normalizeActionRule) };
 }
 
 function normalizeRole(raw: Raw): AccessRole {
@@ -86,7 +95,7 @@ export async function createRole(input: NewRoleInput): Promise<ApiResult<AccessR
  *
  * When `permissions` is sent it replaces the stored rule set wholesale, so
  * callers must pass every rule the role should keep — see
- * updateRoleZonePermissions.
+ * updateRolePermissions.
  */
 export async function updateRole(
   roleId: string,
@@ -98,17 +107,16 @@ export async function updateRole(
 }
 
 /**
- * Changes only the role's restricted-area rules, carrying every other rule
- * through untouched.
+ * Replaces a role's whole rule set.
  *
- * The backend replaces the rule set as a whole, so anything not sent is
- * dropped. Rules for actions this UI has no control for — a `possible_weapon`
- * exemption carried over by the migration, say — must survive an unrelated
- * zone edit rather than vanish invisibly.
+ * The backend replaces `permissions` wholesale, so the caller must pass every
+ * rule the role should keep. The action-rules editor does exactly that: it
+ * only ever changes one (action, zone) entry and leaves the rest — including
+ * rules for actions it renders read-only, like a migrated `possible_weapon`
+ * exemption — untouched, so nothing vanishes invisibly.
  */
-export function updateRoleZonePermissions(role: AccessRole, zoneRules: ActionRule[]): Promise<ApiResult<AccessRole>> {
-  const others = role.permissions.actions.filter((rule) => rule.action !== 'restricted_area');
-  return updateRole(role.id, { permissions: { actions: [...others, ...zoneRules] } });
+export function updateRolePermissions(roleId: string, actions: ActionRule[]): Promise<ApiResult<AccessRole>> {
+  return updateRole(roleId, { permissions: { actions } });
 }
 
 /** Refused with 409 while any person or recorded decision still refers to the role. */
@@ -260,21 +268,22 @@ export function deleteZone(zoneId: string): Promise<ApiResult<null>> {
 function normalizeDecision(raw: Raw): PolicyDecision {
   return {
     id: id(raw),
-    detectionType: String(raw.detectionType),
+    action: String(raw.action) as ActionKey,
     cameraId: String(raw.cameraId),
     zoneId: optionalString(raw.zoneId),
     zoneName: optionalString(raw.zoneName),
-    identityState: raw.identityState === 'identified' ? 'identified' : 'unidentified',
+    subject: raw.subject === 'unidentified_person' ? 'unidentified_person' : 'person',
+    unidentifiedReason: (optionalString(raw.unidentifiedReason) as PolicyDecision['unidentifiedReason']) ?? null,
     personId: optionalString(raw.personId),
     personName: optionalString(raw.personName),
     roleKey: optionalString(raw.roleKey),
     aprilTagId: optionalNumber(raw.aprilTagId),
     loraDeviceId: optionalString(raw.loraDeviceId),
     loraCorroborated: Boolean(raw.loraCorroborated),
+    ruleApplied: normalizeRule(raw.ruleApplied),
+    ruleSource: (optionalString(raw.ruleSource) as PolicyRuleSource) ?? 'default',
     decision: raw.decision === 'suppressed' ? 'suppressed' : 'alert_created',
     reason: String(raw.reason ?? ''),
-    roleZoneAllowed: typeof raw.roleZoneAllowed === 'boolean' ? raw.roleZoneAllowed : null,
-    weaponExemptApplied: typeof raw.weaponExemptApplied === 'boolean' ? raw.weaponExemptApplied : null,
     alertId: optionalString(raw.alertId),
     createdAt: String(raw.createdAt ?? ''),
   };
@@ -282,8 +291,9 @@ function normalizeDecision(raw: Raw): PolicyDecision {
 
 export interface PolicyDecisionQuery {
   decision?: PolicyDecisionOutcome;
-  identityState?: IdentityState;
-  detectionType?: string;
+  subject?: PolicySubject;
+  action?: ActionKey;
+  ruleSource?: PolicyRuleSource;
   cameraId?: string;
   limit?: number;
 }
@@ -295,12 +305,65 @@ export interface PolicyDecisionQuery {
 export async function fetchPolicyDecisions(params: PolicyDecisionQuery = {}): Promise<ApiResult<PolicyDecision[]>> {
   const search = new URLSearchParams();
   if (params.decision) search.set('decision', params.decision);
-  if (params.identityState) search.set('identityState', params.identityState);
-  if (params.detectionType) search.set('detectionType', params.detectionType);
+  if (params.subject) search.set('subject', params.subject);
+  if (params.action) search.set('action', params.action);
+  if (params.ruleSource) search.set('ruleSource', params.ruleSource);
   if (params.cameraId) search.set('cameraId', params.cameraId);
   search.set('limit', String(params.limit ?? 100));
 
   const result = await request<Raw[]>(`/api/policy-decisions?${search.toString()}`);
   if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error, unauthorized: result.unauthorized };
   return { data: result.data.map(normalizeDecision), ok: true };
+}
+
+/* ------------------------------- action catalog ------------------------------ */
+
+function normalizeAction(raw: Raw): ActionDefinition {
+  return {
+    key: String(raw.key) as ActionKey,
+    label: String(raw.label),
+    description: String(raw.description ?? ''),
+    scope: raw.scope === 'zone' ? 'zone' : 'global',
+    detector: raw.detector === 'live' ? 'live' : 'planned',
+    configurable: Boolean(raw.configurable),
+    unconfigurableReason: optionalString(raw.unconfigurableReason) ?? undefined,
+    policyEnforced: Boolean(raw.policyEnforced),
+    requiresSnapshot: Boolean(raw.requiresSnapshot),
+    defaultSeverity: (optionalString(raw.defaultSeverity) as ActionDefinition['defaultSeverity']) ?? 'warning',
+  };
+}
+
+/**
+ * The code-defined catalog. The console renders exactly what the backend
+ * enforces — never a copy that can drift from it.
+ */
+export async function fetchActionCatalog(): Promise<ApiResult<ActionDefinition[]>> {
+  const result = await request<{ actions: Raw[] }>('/api/action-catalog');
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error, unauthorized: result.unauthorized };
+  return { data: (result.data.actions ?? []).map(normalizeAction), ok: true };
+}
+
+/* ---------------------------- unidentified policy ---------------------------- */
+
+function normalizeUnidentifiedPolicy(raw: Raw): UnidentifiedPolicy {
+  const rules = Array.isArray(raw.rules) ? raw.rules : [];
+  return {
+    subject: 'unidentified_person',
+    defaultRule: normalizeRule(raw.defaultRule),
+    rules: rules.map(normalizeActionRule),
+    updatedAt: optionalString(raw.updatedAt),
+  };
+}
+
+export async function fetchUnidentifiedPolicy(): Promise<ApiResult<UnidentifiedPolicy>> {
+  const result = await request<Raw>('/api/unidentified-policy');
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error, unauthorized: result.unauthorized };
+  return { data: normalizeUnidentifiedPolicy(result.data), ok: true };
+}
+
+/** Replaces the whole rule set — the caller passes every rule the policy should keep. */
+export async function updateUnidentifiedPolicy(rules: ActionRule[]): Promise<ApiResult<UnidentifiedPolicy>> {
+  const result = await request<Raw>('/api/unidentified-policy', { method: 'PUT', body: JSON.stringify({ rules }) });
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
+  return { data: normalizeUnidentifiedPolicy(result.data), ok: true };
 }

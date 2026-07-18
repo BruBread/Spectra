@@ -62,17 +62,32 @@ test.describe('access control: navigation and roles', () => {
     await expect(page.getByText(/No detector or policy engine reads them yet/)).toBeVisible();
   });
 
-  test('offers no zone permission controls until a zone exists', async ({ page }) => {
+  test('offers no zone rule controls until a zone exists', async ({ page }) => {
     await loginViaUi(page);
     await goTo(page, 'roles');
 
     await expect(page.getByText('No restricted zones exist yet.').first()).toBeVisible();
-    await expect(page.locator('input[type="checkbox"]')).toHaveCount(0);
+    // The restricted_area rule controls only appear once there is a real zone
+    // to write a rule about.
+    await expect(page.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
   });
 
-  test('creates a custom role and grants it a zone', async ({ page }) => {
+  test('shows the whole catalog, with possible_weapon read-only', async ({ page }) => {
+    await loginViaUi(page);
+    await goTo(page, 'roles');
+
+    const guard = roleCard(page, 'security_guard');
+    // Rendered from the code-defined catalog, not invented by the UI.
+    await expect(guard.locator('[data-action="restricted_area"]')).toBeVisible();
+    await expect(guard.locator('[data-action="possible_weapon"]')).toContainText('Not active yet');
+    await expect(guard.locator('[data-action="unattended_object"]')).toContainText(
+      /ownership cannot be established/i,
+    );
+  });
+
+  test('creates a custom role and grants it a zone, without confirmation', async ({ page }) => {
     const cameraId = await seedCamera(api);
-    await seedZone(api, { name: 'Server Room', cameraId });
+    const zone = await seedZone(api, { name: 'Server Room', cameraId });
 
     await loginViaUi(page);
     await goTo(page, 'roles');
@@ -86,21 +101,46 @@ test.describe('access control: navigation and roles', () => {
     const contractor = roleCard(page, 'contractor');
     await expect(contractor).toContainText('Contractor');
 
-    // Grant the zone on this role specifically, then confirm it reached the
-    // backend rather than only the screen.
-    const checkbox = contractor.locator('label').filter({ hasText: 'Server Room' }).locator('input[type="checkbox"]');
-    await checkbox.click();
-    await expect(checkbox).toBeChecked();
+    // Allow the zone on this role. A role rule is specific, so it applies
+    // immediately with no confirmation dialog.
+    const row = contractor.locator(`[data-zone-rule="${zone._id}"]`);
+    await row.getByRole('button', { name: 'Allow', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Allow', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
     const role = await roleByKey(api, 'contractor');
     const detail = await (await api.get(`/api/roles/${role._id}`)).json();
-    expect(detail.permissions.actions).toHaveLength(1);
-    expect(detail.permissions.actions[0]).toMatchObject({ action: 'restricted_area', rule: 'allow' });
+    expect(detail.permissions.actions).toEqual([
+      expect.objectContaining({ action: 'restricted_area', rule: 'allow' }),
+    ]);
 
     // The other roles must not have been granted anything by association.
     const staff = await roleByKey(api, 'staff');
     const staffDetail = await (await api.get(`/api/roles/${staff._id}`)).json();
     expect(staffDetail.permissions.actions).toHaveLength(0);
+  });
+
+  test('restricting a granted zone removes the rule rather than storing a denial', async ({ page }) => {
+    const cameraId = await seedCamera(api);
+    const zone = await seedZone(api, { name: 'Vault', cameraId });
+    const guard = await roleByKey(api, 'security_guard');
+    await api.patch(`/api/roles/${guard._id}`, {
+      data: { permissions: { actions: [{ action: 'restricted_area', zoneId: zone._id, rule: 'allow' }] } },
+    });
+
+    await loginViaUi(page);
+    await goTo(page, 'roles');
+
+    const row = roleCard(page, 'security_guard').locator(`[data-zone-rule="${zone._id}"]`);
+    await expect(row.getByRole('button', { name: 'Allow', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await row.getByRole('button', { name: 'Restrict', exact: true }).click();
+
+    await expect(async () => {
+      const detail = await (await api.get(`/api/roles/${guard._id}`)).json();
+      // Restrict is the default; it is stored as the absence of a rule, not as
+      // an explicit denial this two-state control never meant.
+      expect(detail.permissions.actions).toHaveLength(0);
+    }).toPass();
   });
 
   test('refuses to delete a role that people still hold, and says why', async ({ page }) => {
@@ -314,6 +354,69 @@ test.describe('access control: restricted zones', () => {
   });
 });
 
+test.describe('access control: unidentified-person policy', () => {
+  test('defaults to restrict and explains the blast radius', async ({ page }) => {
+    const cameraId = await seedCamera(api);
+    const zone = await seedZone(api, { name: 'E2E Lobby', cameraId });
+
+    await loginViaUi(page);
+    await goTo(page, 'unidentified');
+
+    await expect(page.getByText(/everyone the cameras cannot identify/i)).toBeVisible();
+    const row = page.locator(`[data-zone-rule="${zone._id}"]`);
+    // Restrict is the starting state — nobody has granted anything.
+    await expect(row.getByRole('button', { name: 'Restrict', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('requires explicit confirmation to allow, and persists on confirm', async ({ page }) => {
+    const cameraId = await seedCamera(api);
+    const zone = await seedZone(api, { name: 'E2E Atrium', cameraId });
+
+    await loginViaUi(page);
+    await goTo(page, 'unidentified');
+
+    const row = page.locator(`[data-zone-rule="${zone._id}"]`);
+    await row.getByRole('button', { name: 'Allow', exact: true }).click();
+
+    // A blanket allow for everyone unidentified must not happen on one click.
+    const confirm = page.getByRole('dialog');
+    await expect(confirm).toContainText('Allow every unidentified person?');
+    await expect(confirm).toContainText('E2E Atrium');
+    await confirm.getByRole('button', { name: /^Allow in/ }).click();
+
+    await expect(async () => {
+      const policy = await (await api.get('/api/unidentified-policy')).json();
+      expect(policy.rules).toEqual([expect.objectContaining({ action: 'restricted_area', rule: 'allow' })]);
+    }).toPass();
+  });
+
+  test('cancelling the confirmation leaves the zone restricted', async ({ page }) => {
+    const cameraId = await seedCamera(api);
+    const zone = await seedZone(api, { name: 'E2E Foyer', cameraId });
+
+    await loginViaUi(page);
+    await goTo(page, 'unidentified');
+
+    await page.locator(`[data-zone-rule="${zone._id}"]`).getByRole('button', { name: 'Allow', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+
+    // Nothing was written — the API still returns an empty rule set.
+    const policy = await (await api.get('/api/unidentified-policy')).json();
+    expect(policy.rules).toHaveLength(0);
+  });
+
+  test('an operator sees the policy but cannot change it', async ({ page }) => {
+    const cameraId = await seedCamera(api);
+    await seedZone(api, { name: 'E2E Operator Zone', cameraId });
+
+    await loginAs(page, E2E_OPERATOR);
+    await goTo(page, 'unidentified');
+
+    await expect(page.getByText(/everyone the cameras cannot identify/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Allow', exact: true }).first()).toBeDisabled();
+  });
+});
+
 test.describe('access control: decision log', () => {
   test('is empty and says why, rather than inventing decisions', async ({ page }) => {
     await loginViaUi(page);
@@ -360,7 +463,8 @@ test.describe('access control: operator permissions', () => {
 
     await goTo(page, 'roles');
     await expect(page.getByRole('button', { name: 'Add role' })).toHaveCount(0);
-    // Zone permission checkboxes are visible but not operable.
-    await expect(page.locator('input[type="checkbox"]').first()).toBeDisabled();
+    // The Allow/Restrict controls are visible but not operable.
+    await expect(page.getByRole('button', { name: 'Allow', exact: true }).first()).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Restrict', exact: true }).first()).toBeDisabled();
   });
 });

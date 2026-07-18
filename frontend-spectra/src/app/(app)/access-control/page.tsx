@@ -2,14 +2,15 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, FileClock, MapPin, ShieldCheck, Users } from 'lucide-react';
+import { Eye, FileClock, MapPin, ShieldCheck, UserX, Users } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { failed, loaded, loading, type LoadState } from '../../../lib/accessControl/loadState';
-import type { AccessRole, RestrictedZone } from '../../../lib/accessControl/types';
-import { fetchRoles, fetchZones } from '../../../lib/api/accessControl';
+import type { AccessRole, ActionDefinition, RestrictedZone } from '../../../lib/accessControl/types';
+import { fetchActionCatalog, fetchRoles, fetchZones } from '../../../lib/api/accessControl';
 import { DecisionLogPanel } from '../../../components/access-control/DecisionLogPanel';
 import { PeoplePanel } from '../../../components/access-control/PeoplePanel';
 import { RolesPanel } from '../../../components/access-control/RolesPanel';
+import { UnidentifiedPolicyPanel } from '../../../components/access-control/UnidentifiedPolicyPanel';
 import { ZonesPanel } from '../../../components/access-control/ZonesPanel';
 import { Tabs, TabPanel, type TabItem } from '../../../components/ui/Tabs';
 import styles from './access-control.module.css';
@@ -18,6 +19,7 @@ const TABS: TabItem[] = [
   { id: 'people', label: 'People', icon: <Users size={16} aria-hidden="true" /> },
   { id: 'roles', label: 'Roles', icon: <ShieldCheck size={16} aria-hidden="true" /> },
   { id: 'zones', label: 'Restricted Zones', icon: <MapPin size={16} aria-hidden="true" /> },
+  { id: 'unidentified', label: 'Unidentified', icon: <UserX size={16} aria-hidden="true" /> },
   { id: 'decisions', label: 'Decision Log', icon: <FileClock size={16} aria-hidden="true" /> },
 ];
 
@@ -44,6 +46,9 @@ function AccessControlPageInner() {
    */
   const [roles, setRoles] = useState<LoadState<AccessRole[]>>(loading([]));
   const [zones, setZones] = useState<LoadState<RestrictedZone[]>>(loading([]));
+  // The code-defined action catalog drives the rule editors. Loaded once and
+  // shared, so every editor renders the same actions the backend enforces.
+  const [catalog, setCatalog] = useState<LoadState<ActionDefinition[]>>(loading([]));
 
   const loadRoles = useCallback(async () => {
     const result = await fetchRoles();
@@ -55,11 +60,17 @@ function AccessControlPageInner() {
     setZones(result.ok && result.data ? loaded(result.data) : failed([], result.error ?? 'Could not load zones.'));
   }, []);
 
+  const loadCatalog = useCallback(async () => {
+    const result = await fetchActionCatalog();
+    setCatalog(result.ok && result.data ? loaded(result.data) : failed([], result.error ?? 'Could not load the action catalog.'));
+  }, []);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetching from the backend on mount; the loading flip is the point, not a derived value
     void loadRoles();
     void loadZones();
-  }, [loadRoles, loadZones]);
+    void loadCatalog();
+  }, [loadRoles, loadZones, loadCatalog]);
 
   const reloadAll = useCallback(() => {
     void loadRoles();
@@ -72,8 +83,8 @@ function AccessControlPageInner() {
         <div>
           <h2 className={styles.title}>Access Control</h2>
           <p className={styles.subtitle}>
-            People, roles, restricted zones and the policy decision log. Configuration only — no detector or policy
-            engine reads any of it yet.
+            People, roles, restricted zones, the unidentified-person policy and the decision log. Configuration only —
+            no detector or policy engine reads any of it yet.
           </p>
         </div>
         {!canEdit ? (
@@ -98,10 +109,13 @@ function AccessControlPageInner() {
         <PeoplePanel roles={roles} canEdit={canEdit} onPeopleChanged={reloadAll} />
       </TabPanel>
       <TabPanel id="roles" activeId={activeTab}>
-        <RolesPanel roles={roles} zones={zones} canEdit={canEdit} onRolesChanged={reloadAll} />
+        <RolesPanel roles={roles} zones={zones} catalog={catalog} canEdit={canEdit} onRolesChanged={reloadAll} />
       </TabPanel>
       <TabPanel id="zones" activeId={activeTab}>
         <ZonesPanel zones={zones} roles={roles} canEdit={canEdit} onZonesChanged={reloadAll} />
+      </TabPanel>
+      <TabPanel id="unidentified" activeId={activeTab}>
+        <UnidentifiedPolicyPanel zones={zones} catalog={catalog} canEdit={canEdit} />
       </TabPanel>
       <TabPanel id="decisions" activeId={activeTab}>
         <DecisionLogPanel />

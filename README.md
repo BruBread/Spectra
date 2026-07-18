@@ -448,15 +448,17 @@ Nothing writes these yet.
 [Identity, zones and policy](#identity-zones-and-policy-backend). It is
 **configuration only**: no detector reads a zone and no policy engine reads a
 permission, so nothing configured here changes what the cameras do today. The
-UI says so on the Roles and Zones tabs rather than leaving it to be assumed.
+UI says so on the Roles, Zones and Unidentified tabs rather than leaving it to
+be assumed.
 
-Four tabs, each selectable via `?tab=` so a view can be linked to:
+Five tabs, each selectable via `?tab=` so a view can be linked to:
 
 | Tab | Backed by |
 |---|---|
 | People | `/api/people`, `/api/roles`, `/api/lora-devices` |
-| Roles | `/api/roles`, `/api/zones` |
+| Roles | `/api/roles`, `/api/zones`, `/api/action-catalog` |
 | Restricted Zones | `/api/zones`, `/api/roles`, `/api/cameras` |
+| Unidentified | `/api/unidentified-policy`, `/api/zones`, `/api/action-catalog` |
 | Decision Log | `/api/policy-decisions` |
 
 Every screen reads a real authenticated endpoint. There is no mock data, no
@@ -477,19 +479,26 @@ LoRa picker lists the real `/api/lora-devices` result with assignment state;
 manual entry exists for hardware that has not reported yet, which is the only
 device-registration flow the backend has.
 
-**Roles.** Zone permission controls appear only once a zone exists — an empty
-permission list would otherwise look like a decision rather than an absence.
-The checkbox writes a `restricted_area` `allow` rule and leaves an unticked
-zone unwritten; both deny, and a two-state control can't express the
-difference between "denied" and "considered and denied". Rules for actions
-the catalog marks unconfigurable are shown read-only and labelled unenforced
-when set, since hiding a permission that exists is worse than showing an inert
-one — and they survive an unrelated zone edit rather than being dropped by the
-wholesale replace.
+**Roles.** A shared, catalog-driven editor renders every action from
+`/api/action-catalog` — the UI never invents an action, its label, or its
+reason for being unconfigurable. `restricted_area` shows a per-zone
+Allow/Restrict control (controls appear only once a real zone exists);
+`possible_weapon` and `unattended_object` render read-only with the catalog's
+own reason, because neither is configurable yet. Allow writes a rule and
+Restrict leaves the target unwritten — both deny, and a two-state control
+can't express the difference between "denied" and "considered and denied", so
+it never fabricates the latter. A rule for an unconfigurable action (a weapon
+exemption carried across by the migration, say) is shown labelled *not
+enforced* rather than hidden, and survives an unrelated edit rather than being
+dropped by the wholesale replace.
 
-> The Access Control UI still speaks only `restricted_area` zone rules. The
-> catalog-driven action editor and the Unidentified / No Credential section are
-> the next UI phase.
+**Unidentified / No Credential.** The same editor, backed by
+`/api/unidentified-policy`, for everyone the cameras cannot identify.
+Everything restricts by default. Because an `allow` here waves through *every*
+unidentified person in that context — not one named individual — switching a
+zone to Allow opens a confirmation naming the zone and stating the
+consequence, and the Allow state is styled cautionary. Cancelling writes
+nothing.
 
 **Zones.** Rectangles are drawn with the same `ZoneDrawer` the Live Monitor
 uses. This page doesn't run the vision pipeline, so it shows the grid rather
@@ -497,8 +506,10 @@ than a stale or fabricated frame preview. A zone's camera is fixed after
 creation, mirroring the backend rule.
 
 **Decision Log.** Read-only, and empty until the policy engine that writes
-decisions ships. The empty state says exactly that. Nothing here is ever
-simulated.
+decisions ships. Its columns record the reasoning the audit trail exists for —
+subject (identified person vs unidentified), the rule applied, and its source
+(a role rule, the unidentified policy, or the restrict default). The empty
+state says exactly that. Nothing here is ever simulated.
 
 ## LoRaWAN ingest module
 

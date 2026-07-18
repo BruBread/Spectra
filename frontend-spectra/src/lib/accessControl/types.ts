@@ -11,6 +11,13 @@ export type ActionKey = 'restricted_area' | 'possible_weapon' | 'unattended_obje
 
 export type PolicyRule = 'allow' | 'restrict';
 
+export const POLICY_RULES: PolicyRule[] = ['allow', 'restrict'];
+
+export const RULE_LABELS: Record<PolicyRule, string> = {
+  allow: 'Allow',
+  restrict: 'Restrict',
+};
+
 /**
  * One explicit rule. A rule that isn't written restricts — absence is not
  * permission.
@@ -21,6 +28,34 @@ export interface ActionRule {
   zoneId: string | null;
   rule: PolicyRule;
 }
+
+/**
+ * One entry from the backend's code-defined Action Catalog, served by
+ * `GET /api/action-catalog`. Rendered as-is — the UI never invents an action,
+ * its label, its reason for being unconfigurable, or whether it is enforced.
+ */
+export interface ActionDefinition {
+  key: ActionKey;
+  label: string;
+  description: string;
+  /** `zone` — one rule per named zone. `global` — a single rule for the action. */
+  scope: 'zone' | 'global';
+  detector: 'live' | 'planned';
+  /** Whether an admin may write a rule for it. */
+  configurable: boolean;
+  /** Why not — rendered verbatim. */
+  unconfigurableReason?: string;
+  /** Whether the backend actually applies the rule today. */
+  policyEnforced: boolean;
+  requiresSnapshot: boolean;
+  defaultSeverity: 'info' | 'warning' | 'critical';
+}
+
+export const ACTION_LABELS: Record<ActionKey, string> = {
+  restricted_area: 'Restricted area',
+  possible_weapon: 'Possible weapon',
+  unattended_object: 'Unattended object',
+};
 
 export interface RolePermissions {
   actions: ActionRule[];
@@ -87,38 +122,75 @@ export interface RestrictedZone {
   updatedAt: string;
 }
 
-export type IdentityState = 'identified' | 'unidentified';
+/** Policy for people the cameras cannot identify — `GET/PUT /api/unidentified-policy`. */
+export interface UnidentifiedPolicy {
+  subject: 'unidentified_person';
+  /** Always `restrict`; surfaced so the UI never hard-codes the default. */
+  defaultRule: PolicyRule;
+  rules: ActionRule[];
+  updatedAt: string | null;
+}
+
 export type PolicyDecisionOutcome = 'alert_created' | 'suppressed';
+
+/** Who a decision was about: a specific identified person, or the reserved subject. */
+export type PolicySubject = 'person' | 'unidentified_person';
+
+/** Where the applied rule came from. `default` means nobody wrote one. */
+export type PolicyRuleSource = 'role' | 'unidentified_policy' | 'default';
+
+/** Why nobody could be identified. */
+export type UnidentifiedReason =
+  | 'no_apriltag'
+  | 'unregistered_apriltag'
+  | 'ambiguous_apriltag'
+  | 'inactive_person'
+  | 'inactive_role';
 
 export interface PolicyDecision {
   id: string;
-  detectionType: string;
+  action: ActionKey;
   cameraId: string;
   zoneId: string | null;
   zoneName: string | null;
-  identityState: IdentityState;
+  subject: PolicySubject;
+  unidentifiedReason: UnidentifiedReason | null;
   personId: string | null;
   personName: string | null;
   roleKey: string | null;
   aprilTagId: number | null;
   loraDeviceId: string | null;
   loraCorroborated: boolean;
+  ruleApplied: PolicyRule;
+  ruleSource: PolicyRuleSource;
   decision: PolicyDecisionOutcome;
   reason: string;
-  roleZoneAllowed: boolean | null;
-  weaponExemptApplied: boolean | null;
   alertId: string | null;
   createdAt: string;
 }
 
-export const IDENTITY_STATE_LABELS: Record<IdentityState, string> = {
-  identified: 'Identified',
-  unidentified: 'Unidentified',
-};
-
 export const DECISION_LABELS: Record<PolicyDecisionOutcome, string> = {
   alert_created: 'Alert created',
   suppressed: 'Suppressed',
+};
+
+export const SUBJECT_LABELS: Record<PolicySubject, string> = {
+  person: 'Identified person',
+  unidentified_person: 'Unidentified',
+};
+
+export const RULE_SOURCE_LABELS: Record<PolicyRuleSource, string> = {
+  role: 'Role rule',
+  unidentified_policy: 'Unidentified policy',
+  default: 'Default (restrict)',
+};
+
+export const UNIDENTIFIED_REASON_LABELS: Record<UnidentifiedReason, string> = {
+  no_apriltag: 'No readable AprilTag',
+  unregistered_apriltag: 'AprilTag not registered',
+  ambiguous_apriltag: 'Ambiguous AprilTag',
+  inactive_person: 'Person deactivated',
+  inactive_role: 'Role deactivated',
 };
 
 /* -------------------------------- credentials ------------------------------- */
