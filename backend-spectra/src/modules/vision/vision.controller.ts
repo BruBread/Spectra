@@ -5,6 +5,7 @@ import {
   ALERT_STATUSES,
   ALL_DETECTION_TYPES,
   DETECTION_TYPES,
+  POLICY_ALERT_TYPES,
   SILENT_DETECTION_TYPES,
   type AlertSeverity,
   type AlertStatus,
@@ -151,14 +152,17 @@ export async function createAlert(req: Request, res: Response, next: NextFunctio
     if (!isDetectionType(type)) {
       // Naming each rejected case explicitly: a client still sending one is
       // out of date, and "invalid type" alone would not say why.
+      const policy = (POLICY_ALERT_TYPES as string[]).includes(String(type));
       const silent = (SILENT_DETECTION_TYPES as string[]).includes(String(type));
       const retired = (ALL_DETECTION_TYPES as string[]).includes(String(type));
       res.status(400).json({
-        error: silent
-          ? `Detection type "${type}" is a silent identity capability and no longer creates alerts. It is read as a credential by policy evaluation instead. Alerting types: ${DETECTION_TYPES.join(', ')}`
-          : retired
-            ? `Detection type "${type}" has been retired and can no longer be recorded. Active types: ${DETECTION_TYPES.join(', ')}`
-            : `type must be one of: ${DETECTION_TYPES.join(', ')}`,
+        error: policy
+          ? `Detection type "${type}" is created by server-side policy enforcement, not by clients. Post a camera observation to /api/vision/observations and the server decides whether to alert. Client-postable types: ${DETECTION_TYPES.join(', ')}`
+          : silent
+            ? `Detection type "${type}" is a silent identity capability and no longer creates alerts. It is read as a credential by policy evaluation instead. Alerting types: ${DETECTION_TYPES.join(', ')}`
+            : retired
+              ? `Detection type "${type}" has been retired and can no longer be recorded. Active types: ${DETECTION_TYPES.join(', ')}`
+              : `type must be one of: ${DETECTION_TYPES.join(', ')}`,
       });
       return;
     }

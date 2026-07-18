@@ -276,10 +276,12 @@ reads the environment once at import.
 
 ## Identity, zones and policy (backend)
 
-Backend foundation for the MVP's identity model. **Nothing enforces these
-yet** — no detector reads a zone, and no policy decision is written by alert
-ingestion. Those arrive in later phases; this is the data and the admin API
-they will build on.
+Backend foundation for the MVP's identity model. **`restricted_area` is now
+enforced** — a camera observation of a person entering a restricted zone is
+evaluated server-side and either alerts or is suppressed and audited (see
+[Restricted-area enforcement](#restricted-area-enforcement)). The other actions
+remain configuration-only: `possible_weapon` has no detector and
+`unattended_object` has no role exemption.
 
 All routes need a session. Reads are open to `admin` and `operator`; **every
 mutation is `admin`-only**, matching the camera and vision routes.
@@ -297,15 +299,15 @@ otherwise (`DEFAULT_RULE`).
 
 | Action | Scope | Detector | Configurable | Enforced |
 |---|---|---|---|---|
-| `restricted_area` | per zone | planned | **yes** | not yet |
+| `restricted_area` | per zone | **live** | **yes** | **yes** |
 | `possible_weapon` | global | planned | no — *"Not active yet"* | no |
 | `unattended_object` | global | live | no — always alerts | no |
 
 `detector`, `configurable` and `policyEnforced` are three separate fields
-because those rows occupy three different combinations of them. It is also
-what lets `restricted_area` be **configured before it is enforced**, and lets
-the console say exactly that for as long as it's true — the phase that ships
-restricted-area detection flips two flags in one file.
+because those rows occupy three different combinations of them. `restricted_area`
+was configurable before it was enforced; the phase that shipped restricted-area
+detection flipped its `detector` and `policyEnforced` flags in one file, and the
+console reflects the change automatically.
 
 `unattended_object` has **no role exemption, by design**. Once the person who
 left an object walks away, ownership can't be established from a frame, so no
@@ -385,7 +387,8 @@ coordinates so it means the same thing at any resolution.
 | `PATCH` | `/api/zones/:id` | Rename, move the rect, archive (`active: false`). `cameraId` is immutable — a rectangle only means something on its own camera |
 | `DELETE` | `/api/zones/:id` | `409` once a recorded policy decision names it — archive instead. Otherwise deleted, and pulled out of every role's permissions so nothing dangles |
 
-Zone names are unique per camera. Zones are **not wired into detection yet**.
+Zone names are unique per camera. Zones **drive restricted-area enforcement**
+(see below); a zone must actually frame the doorway/floor for it to work.
 
 ### Unidentified / No Credential policy
 
@@ -440,7 +443,63 @@ Three fields carry the reasoning:
   tells a reviewer the no-credential policy applied**, rather than something
   attached to a person.
 
-Nothing writes these yet.
+Restricted-area enforcement writes these. Each also stores the `trackId` of the
+camera track it was about, so repeats of one entry fold into a single episode.
+
+### Restricted-area enforcement
+
+`POST /api/vision/observations` (any session — an operator's browser posts it)
+is where a camera reports a person entering a restricted zone. **The browser
+sends CV facts only; the server makes every decision.** The payload carries no
+identity, no rule and no outcome — the browser cannot make a policy decision,
+by construction:
+
+```jsonc
+{
+  "cameraId": "…", "zoneId": "…", "trackId": "…",
+  "frame": { "width": 1000, "height": 1000 },
+  "personBox": [x, y, w, h],          // video pixels
+  "enteredFromOutside": true,          // CV: track was seen outside the zone first
+  "framesInside": 5, "dwellMs": 2000,
+  "aprilTags": [7],                    // raw decoded tag numbers, never resolved client-side
+  "snapshot": "data:image/jpeg;base64,…"
+}
+```
+
+**This is 2D camera-zone enforcement, not 3D tracking.** A person's *ground
+point* is the bottom-centre of their box; they are "in" a zone when that point
+falls inside the zone rectangle. Cameras must therefore be positioned to capture
+the doorway/floor of the area they guard.
+
+The server re-derives every quality gate from the payload — it never trusts the
+client's copy — and drops the observation, writing nothing, unless it clears all
+of them:
+
+- the box is not clipped by the **bottom, left or right** edge (feet/sides cut
+  off make the ground point unreliable; a clipped **top** is fine),
+- the box is neither too small (far away / not a person) nor too large (too
+  close, occluding the lens), by configurable height/area fractions,
+- the ground point is inside the named zone,
+- the track has been confirmed inside for a configurable number of frames and
+  milliseconds — a single frame never fires,
+- `enteredFromOutside` is true, so someone already standing inside when
+  monitoring starts is not treated as an entry.
+
+Only then does policy run, **entirely server-side**:
+
+1. **Identity** comes from AprilTags alone. A LoRa wristband never identifies
+   anyone — a nearby device with no readable tag is `no_apriltag`, exactly like
+   carrying nothing.
+2. **The rule** for that person (or the unidentified-person policy) in that zone
+   is resolved, defaulting to `restrict`.
+3. `allow` **suppresses** the alert and writes a `PolicyDecision`; anything else
+   creates a **`restricted_area` alert** with its evidence snapshot, feeds the
+   notification list, and writes a decision. Either way there is an audit
+   record; a suppressed one is the only trace that detection happened.
+
+Thresholds live on `VisionSettings.restrictedArea` (per camera). `restricted_area`
+is a **server-only alert type**: `POST /api/vision/alerts` rejects it, so a
+client cannot fabricate one and skip evaluation.
 
 ## Access Control (admin UI)
 
@@ -505,11 +564,11 @@ uses. This page doesn't run the vision pipeline, so it shows the grid rather
 than a stale or fabricated frame preview. A zone's camera is fixed after
 creation, mirroring the backend rule.
 
-**Decision Log.** Read-only, and empty until the policy engine that writes
-decisions ships. Its columns record the reasoning the audit trail exists for —
-subject (identified person vs unidentified), the rule applied, and its source
-(a role rule, the unidentified policy, or the restrict default). The empty
-state says exactly that. Nothing here is ever simulated.
+**Decision Log.** Read-only. Restricted-area enforcement writes to it now: each
+row records the reasoning the audit trail exists for — subject (identified
+person vs unidentified), the rule applied, and its source (a role rule, the
+unidentified policy, or the restrict default). It stays empty only until a
+camera actually observes an entry; nothing here is ever simulated.
 
 ## LoRaWAN ingest module
 
@@ -621,7 +680,7 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 |---|---|
 | `_id` | Alert id |
 | `cameraId` | Camera the detection came from |
-| `type` | `unattended_object`. Alerts recorded before the pose-based detectors were removed, or before AprilTag went silent, may also carry those types — see [Retired and silent detection types](#retired-and-silent-detection-types) |
+| `type` | `unattended_object` (client-posted), or `restricted_area` (server-only, from policy enforcement). Alerts recorded before the pose-based detectors were removed, or before AprilTag went silent, may also carry those types — see [Retired and silent detection types](#retired-and-silent-detection-types) |
 | `severity` | `info` \| `warning` \| `critical` |
 | `status` | `new` \| `acknowledged` \| `under_review` \| `resolved` \| `dismissed` |
 | `read` | Read/unread state for notification badges |
@@ -632,7 +691,7 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 | `metadata` | Detector-specific detail (e.g. `trackId`) |
 | `occurrences` / `lastOccurredAt` | Repeat count and most recent repeat (see grouping) |
 | `acknowledged` | **Legacy.** Kept in sync with `status`: `true` for any status other than `new` |
-| `policy` | Why a policy engine let this alert exist. **Schema only** — null on everything, until restricted-area enforcement ships |
+| `policy` | Provenance for a policy-created alert (subject, rule source, unidentified reason, person/role, decision id). Set on `restricted_area` alerts; null on client-posted alerts, which were never evaluated |
 | `createdAt` | First occurrence |
 
 Severity defaults to `warning` when the client doesn't send one. A client may
@@ -684,7 +743,8 @@ npm run purge:retired-alerts -- --confirm # actually delete
 |---|---|---|
 | `GET` | `/alerts` | List alerts, newest first |
 | `GET` | `/alerts/counts` | `{ unread, criticalOpen, new }` totals for badges |
-| `POST` | `/alerts` | Create an alert (`201`), or group a repeat (`200`) |
+| `POST` | `/alerts` | Create an alert (`201`), or group a repeat (`200`). Rejects `restricted_area` — that type is server-only, see [enforcement](#restricted-area-enforcement) |
+| `POST` | `/observations` | Report a restricted-zone entry for server-side evaluation → `{ status, outcome?, rejection? }` |
 | `POST` | `/alerts/read-all` | Mark every unread alert read → `{ modified }` |
 | `PATCH` | `/alerts/:id/status` | Body `{ status }` — update review status |
 | `PATCH` | `/alerts/:id/read` | Body `{ read }` (default `true`) |

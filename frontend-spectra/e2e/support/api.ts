@@ -130,6 +130,60 @@ export async function seedZone(
   return (await response.json()) as { _id: string; name: string };
 }
 
+/** Writes one restricted-area rule onto a role, replacing its rule set. */
+export async function setRoleRule(api: APIRequestContext, roleId: string, zoneId: string, rule: 'allow' | 'restrict') {
+  const response = await api.patch(`/api/roles/${roleId}`, {
+    data: { permissions: { actions: [{ action: 'restricted_area', zoneId, rule }] } },
+  });
+  if (!response.ok()) throw new Error(`setting role rule failed: ${response.status()} ${await response.text()}`);
+}
+
+/** Writes one restricted-area rule onto the unidentified-person policy. */
+export async function setUnidentifiedRule(api: APIRequestContext, zoneId: string, rule: 'allow' | 'restrict') {
+  const response = await api.put('/api/unidentified-policy', {
+    data: { rules: [{ action: 'restricted_area', zoneId, rule }] },
+  });
+  if (!response.ok()) throw new Error(`setting unidentified rule failed: ${response.status()} ${await response.text()}`);
+}
+
+export interface SeedObservation {
+  cameraId: string;
+  zoneId: string;
+  trackId?: string;
+  aprilTags?: number[];
+  /** Bottom-centre lands in seedZone's default rect (x 0.1–0.5, y 0.1–0.5) on a 1000×1000 frame. */
+  personBox?: [number, number, number, number];
+  enteredFromOutside?: boolean;
+  framesInside?: number;
+  dwellMs?: number;
+}
+
+/**
+ * Posts a restricted-area observation the way the browser pipeline would.
+ *
+ * The suite can't drive a real person across a webcam in CI, so it feeds the
+ * server the same CV facts the observer produces and asserts on what the server
+ * decides — which is the whole of the policy behaviour under test.
+ */
+export async function postObservation(api: APIRequestContext, observation: SeedObservation) {
+  const response = await api.post('/api/vision/observations', {
+    data: {
+      cameraId: observation.cameraId,
+      zoneId: observation.zoneId,
+      trackId: observation.trackId ?? 'e2e-track-1',
+      frame: { width: 1000, height: 1000 },
+      personBox: observation.personBox ?? [300, 100, 100, 300],
+      enteredFromOutside: observation.enteredFromOutside ?? true,
+      framesInside: observation.framesInside ?? 5,
+      dwellMs: observation.dwellMs ?? 2000,
+      aprilTags: observation.aprilTags ?? [],
+      snapshot: 'data:image/jpeg;base64,AAAA',
+    },
+  });
+  if (!response.ok()) throw new Error(`posting observation failed: ${response.status()} ${await response.text()}`);
+  return (await response.json()) as { status: string; outcome?: string; rejection?: string };
+}
+
 /** Signs in through the real login form as any seeded account. */
 export async function loginAs(page: Page, credentials: { email: string; password: string }) {
   await page.goto('/login');

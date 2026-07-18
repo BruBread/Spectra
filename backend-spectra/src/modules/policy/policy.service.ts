@@ -43,3 +43,26 @@ export function listPolicyDecisions(params: ListPolicyDecisionsParams) {
 export function findPolicyDecisionById(id: string) {
   return PolicyDecision.findById(id);
 }
+
+/**
+ * The most recent decision for one camera+zone+track inside a window.
+ *
+ * Episode discipline for suppressed detections: a person allowed to stand in
+ * a zone shouldn't write a suppressed decision every frame. If a decision for
+ * this exact track already exists inside the cooldown, the repeat is folded
+ * into that episode rather than recorded again. (Alerts fold through the
+ * alert-grouping path instead.)
+ */
+export function findRecentEpisodeDecision(params: {
+  cameraId: string;
+  zoneId: string;
+  trackId: string;
+  since: Date;
+}) {
+  return PolicyDecision.findOne({
+    cameraId: params.cameraId,
+    zoneId: params.zoneId,
+    trackId: params.trackId,
+    createdAt: { $gte: params.since },
+  }).sort({ createdAt: -1 });
+}

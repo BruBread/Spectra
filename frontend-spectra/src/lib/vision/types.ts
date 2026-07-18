@@ -1,5 +1,17 @@
-/** Detection types that can raise an alert. Mirrors the backend's. */
+/** Detection types the browser pipeline may post directly to POST /api/vision/alerts. */
 export type DetectionType = 'unattended_object';
+
+/**
+ * Alerting types the backend creates itself and the browser may never post.
+ *
+ * `restricted_area` is the outcome of server-side policy enforcement over a
+ * camera observation. The browser reports the observation; the server decides
+ * whether to alert. It is a valid type on a *stored* alert (so the feed can
+ * render one) but not a client-creatable one.
+ */
+export type PolicyAlertType = 'restricted_area';
+
+export const POLICY_ALERT_TYPES: PolicyAlertType[] = ['restricted_area'];
 
 /**
  * Capabilities the pipeline runs every tick that never raise an alert.
@@ -20,8 +32,8 @@ export type DetectorConfigType = DetectionType | SilentDetectionType;
  */
 export type RetiredDetectionType = 'loitering' | 'running' | 'fighting' | 'drowning' | 'intoxication';
 
-/** Anything a stored alert may carry: alerting types, silent ones, and retired history. */
-export type AnyDetectionType = DetectorConfigType | RetiredDetectionType;
+/** Anything a stored alert may carry: alerting types, server-only policy types, silent ones, and retired history. */
+export type AnyDetectionType = DetectorConfigType | PolicyAlertType | RetiredDetectionType;
 
 /** What raw model output a detector needs computed for it each tick. */
 export type DetectionRequirement = 'objects' | 'apriltag';
@@ -47,6 +59,22 @@ export interface DetectionTypeConfig {
   zone: Zone | null;
 }
 
+/**
+ * Quality-gate tunables for restricted-area enforcement. Mirrors the backend's
+ * RestrictedAreaSettings — the observer uses these to decide what to post, and
+ * the backend re-checks every one authoritatively.
+ */
+export interface RestrictedAreaSettings {
+  minFrames: number;
+  minDwellMs: number;
+  minHeightFraction: number;
+  minAreaFraction: number;
+  maxHeightFraction: number;
+  maxAreaFraction: number;
+  edgeEpsilonFraction: number;
+  cooldownSeconds: number;
+}
+
 export interface VisionSettings {
   cameraId: string;
   /** How often the pipeline runs a detection pass. */
@@ -54,6 +82,21 @@ export interface VisionSettings {
   /** How long alerts (incl. snapshots) are retained before backend cleanup. */
   retentionDays: number;
   detectors: DetectionTypeConfig[];
+  /** Absent until real settings load; the backend always returns it. */
+  restrictedArea?: RestrictedAreaSettings;
+}
+
+export function defaultRestrictedAreaSettings(): RestrictedAreaSettings {
+  return {
+    minFrames: 3,
+    minDwellMs: 1000,
+    minHeightFraction: 0.15,
+    minAreaFraction: 0.01,
+    maxHeightFraction: 0.95,
+    maxAreaFraction: 0.6,
+    edgeEpsilonFraction: 0.01,
+    cooldownSeconds: 60,
+  };
 }
 
 export type AlertSeverity = 'info' | 'warning' | 'critical';
@@ -143,7 +186,11 @@ export const RETIRED_DETECTION_TYPES: RetiredDetectionType[] = [
 ];
 
 /** For filtering, which must still reach recorded history. */
-export const ALL_DETECTION_TYPES: AnyDetectionType[] = [...DETECTOR_CONFIG_TYPES, ...RETIRED_DETECTION_TYPES];
+export const ALL_DETECTION_TYPES: AnyDetectionType[] = [
+  ...DETECTOR_CONFIG_TYPES,
+  ...POLICY_ALERT_TYPES,
+  ...RETIRED_DETECTION_TYPES,
+];
 
 export const DETECTION_LABELS: Record<DetectorConfigType, string> = {
   unattended_object: 'Unattended Object',
@@ -157,6 +204,7 @@ export const DETECTION_LABELS: Record<DetectorConfigType, string> = {
  */
 export const ALL_DETECTION_LABELS: Record<AnyDetectionType, string> = {
   ...DETECTION_LABELS,
+  restricted_area: 'Restricted Area',
   apriltag: 'AprilTag (no longer alerts)',
   loitering: 'Loitering (retired)',
   running: 'Running (retired)',
@@ -176,3 +224,22 @@ export const DETECTION_REQUIREMENTS: Record<DetectorConfigType, DetectionRequire
   unattended_object: 'objects',
   apriltag: 'apriltag',
 };
+
+/**
+ * One confirmed person-inside-a-restricted-zone event the browser reports to
+ * the server. CV facts only — no identity, no rule, no decision. The `aprilTags`
+ * are raw decoded numbers; the observer never resolves them to a person, so the
+ * browser makes no policy decision. Mirrors the backend's RestrictedAreaObservation.
+ */
+export interface RestrictedAreaObservation {
+  cameraId: string;
+  zoneId: string;
+  trackId: string;
+  frame: { width: number; height: number };
+  personBox: [number, number, number, number];
+  enteredFromOutside: boolean;
+  framesInside: number;
+  dwellMs: number;
+  aprilTags: number[];
+  snapshot: string;
+}

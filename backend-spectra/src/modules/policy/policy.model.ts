@@ -20,6 +20,12 @@ const policyDecisionSchema = new Schema(
     cameraId: { type: String, required: true, index: true },
     zoneId: { type: Schema.Types.ObjectId, ref: 'Zone', default: null, index: true },
     zoneName: { type: String, default: null },
+    /**
+     * The camera track this decision was about. Ties an alert or suppression
+     * to one person-passing, so repeats of the same entry inside the cooldown
+     * fold into one episode instead of writing a decision per frame.
+     */
+    trackId: { type: String, default: null },
 
     /**
      * Who the rule was about: a specific identified person, or the reserved
@@ -61,6 +67,8 @@ const policyDecisionSchema = new Schema(
 
 policyDecisionSchema.index({ createdAt: -1 });
 policyDecisionSchema.index({ decision: 1, createdAt: -1 });
+// Episode lookup: "has this exact entry already been recorded recently?"
+policyDecisionSchema.index({ cameraId: 1, zoneId: 1, trackId: 1, createdAt: -1 });
 
 export type PolicyDecisionDocument = HydratedDocument<InferSchemaType<typeof policyDecisionSchema>>;
 

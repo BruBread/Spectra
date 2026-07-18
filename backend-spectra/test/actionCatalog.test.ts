@@ -89,12 +89,14 @@ describe('action catalog: the rules of the catalog itself', () => {
     assert.match(weapon.description, /cannot reliably detect firearms/i);
   });
 
-  it('has restricted_area configurable but not yet enforced', () => {
+  it('has restricted_area live and enforced', () => {
     const restricted = ACTION_CATALOG.find((action) => action.key === 'restricted_area')!;
     assert.equal(restricted.scope, 'zone');
     assert.equal(restricted.configurable, true);
-    // Configurable now, enforced later. The UI must be able to say so.
-    assert.equal(restricted.policyEnforced, false);
+    // Phase 3C ships the detector and enforcement, so the catalog now says so.
+    assert.equal(restricted.detector, 'live');
+    assert.equal(restricted.policyEnforced, true);
+    assert.equal(restricted.requiresSnapshot, true);
   });
 });
 

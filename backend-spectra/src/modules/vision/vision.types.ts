@@ -1,7 +1,21 @@
-/** Detection types that can create an alert today. */
+/** Detection types a client's browser pipeline may post directly to POST /api/vision/alerts. */
 export type DetectionType = 'unattended_object';
 
 export const DETECTION_TYPES: DetectionType[] = ['unattended_object'];
+
+/**
+ * Alerting types the backend creates itself and a client may never post.
+ *
+ * `restricted_area` is the product of server-side policy enforcement over a
+ * camera observation: identity resolution, the per-zone rule and suppression
+ * all happen in restrictedArea.service. Letting a browser POST one to
+ * /api/vision/alerts would be a bypass of exactly that evaluation, so it is a
+ * valid *stored* type but not a client-creatable one — the alerts controller
+ * rejects it.
+ */
+export type PolicyAlertType = 'restricted_area';
+
+export const POLICY_ALERT_TYPES: PolicyAlertType[] = ['restricted_area'];
 
 /**
  * Capabilities the pipeline runs every tick that never produce an alert.
@@ -40,14 +54,16 @@ export const RETIRED_DETECTION_TYPES: RetiredDetectionType[] = [
 ];
 
 /**
- * Anything that may appear on a stored alert: alerting types, history, and
- * `apriltag` — which no longer creates alerts but did before it became an
- * identity credential, so recorded ones stay readable and filterable.
+ * Anything that may appear on a stored alert: client-creatable types,
+ * server-only policy types (`restricted_area`), history, and `apriltag` —
+ * which no longer creates alerts but did before it became an identity
+ * credential, so recorded ones stay readable and filterable.
  */
-export type AnyDetectionType = DetectorConfigType | RetiredDetectionType;
+export type AnyDetectionType = DetectorConfigType | PolicyAlertType | RetiredDetectionType;
 
 export const ALL_DETECTION_TYPES: AnyDetectionType[] = [
   ...DETECTION_TYPES,
+  ...POLICY_ALERT_TYPES,
   ...SILENT_DETECTION_TYPES,
   ...RETIRED_DETECTION_TYPES,
 ];
@@ -114,4 +130,52 @@ const BASE_DETECTORS: DetectionTypeConfig[] = [
 
 export function defaultDetectorConfigs(): DetectionTypeConfig[] {
   return BASE_DETECTORS.map((detector) => ({ ...detector }));
+}
+
+/**
+ * Tunables for restricted-area enforcement.
+ *
+ * These are the quality gate: a confirmed entry has to clear all of them
+ * before identity resolution and policy even run. The browser observer uses
+ * the same numbers to decide what to post, but the backend re-checks every
+ * one from the submitted box — the client's copy is a courtesy, not a
+ * source of truth.
+ *
+ * Fractions are of the frame (0–1), so they mean the same thing at any
+ * resolution, matching how zone rectangles are stored.
+ */
+export interface RestrictedAreaSettings {
+  /** Frames a track must be confirmed inside the zone before it can fire. */
+  minFrames: number;
+  /** Continuous milliseconds inside the zone before it can fire. */
+  minDwellMs: number;
+  /** Reject a person box shorter than this fraction of frame height (too far / not a real person). */
+  minHeightFraction: number;
+  /** Reject a person box smaller than this fraction of frame area. */
+  minAreaFraction: number;
+  /** Reject a person box taller than this fraction of frame height (too close / occluding the lens). */
+  maxHeightFraction: number;
+  /** Reject a person box larger than this fraction of frame area. */
+  maxAreaFraction: number;
+  /**
+   * How close to a frame edge counts as "clipped", as a fraction of frame
+   * size. A box touching the bottom/left/right within this margin has an
+   * unreliable ground point and is rejected.
+   */
+  edgeEpsilonFraction: number;
+  /** Repeat entries for the same camera+zone+track inside this window fold instead of re-alerting. */
+  cooldownSeconds: number;
+}
+
+export function defaultRestrictedAreaSettings(): RestrictedAreaSettings {
+  return {
+    minFrames: 3,
+    minDwellMs: 1000,
+    minHeightFraction: 0.15,
+    minAreaFraction: 0.01,
+    maxHeightFraction: 0.95,
+    maxAreaFraction: 0.6,
+    edgeEpsilonFraction: 0.01,
+    cooldownSeconds: 60,
+  };
 }

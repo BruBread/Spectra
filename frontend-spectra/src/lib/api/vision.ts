@@ -4,6 +4,7 @@ import type {
   AnyDetectionType,
   DetectionType,
   NewVisionAlert,
+  RestrictedAreaObservation,
   VisionAlert,
   VisionSettings,
 } from '../vision/types';
@@ -125,6 +126,28 @@ export async function createAlert(input: NewVisionAlert): Promise<ApiResult<Visi
   });
   if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
   return { data: normalizeAlert(result.data), ok: true };
+}
+
+/** What the server decided about one observation. The browser only reports it — it never sets it. */
+export interface ObservationResult {
+  status: 'ignored' | 'evaluated';
+  outcome?: 'alert_created' | 'suppressed';
+  rejection?: string;
+  decisionId?: string;
+  alertId?: string;
+  deduped?: boolean;
+}
+
+/**
+ * Posts a restricted-area observation. The server does all identity resolution,
+ * policy evaluation and suppression — this call carries CV facts and gets back
+ * only what the server chose to do, which is never influenced by the client.
+ */
+export function postObservation(observation: RestrictedAreaObservation): Promise<ApiResult<ObservationResult>> {
+  return request<ObservationResult>('/api/vision/observations', {
+    method: 'POST',
+    body: JSON.stringify(observation),
+  });
 }
 
 export async function acknowledgeAlert(id: string): Promise<ApiResult<VisionAlert>> {

@@ -14,8 +14,12 @@ import {
   createAlert,
   fetchAlerts,
   fetchVisionSettings,
+  postObservation,
   updateVisionSettings,
 } from '../../../lib/api/vision';
+import { fetchZones } from '../../../lib/api/accessControl';
+import type { PipelineObservation } from '../../../lib/vision/pipeline';
+import type { ObserverZone } from '../../../lib/vision/restrictedAreaObserver';
 import { useToast } from '../../../context/ToastContext';
 import { useCameraSources } from '../../../context/CameraSourcesContext';
 import { supportsDetection } from '../../../lib/cameras/types';
@@ -50,6 +54,7 @@ export default function MonitorPage() {
 
   const [settings, setSettings] = useState<VisionSettings>(() => defaultVisionSettings(selectedCameraId));
   const [alerts, setAlerts] = useState<FeedAlert[]>([]);
+  const [restrictedZones, setRestrictedZones] = useState<ObserverZone[]>([]);
   const [backendConnected, setBackendConnected] = useState(true);
   const [previewSnapshot, setPreviewSnapshot] = useState<string | null>(null);
 
@@ -62,9 +67,16 @@ export default function MonitorPage() {
     settingsLoaded.current = false;
 
     (async () => {
-      const [settingsResult, alertsResult] = await Promise.all([
+      // Zones live on real camera records, keyed by the camera's own id. The
+      // default webcam has no record, so it has no restricted zones to enforce.
+      const zonesPromise = selectedCamera
+        ? fetchZones({ cameraId: selectedCameraId, active: true })
+        : Promise.resolve({ ok: true, data: [] as Awaited<ReturnType<typeof fetchZones>>['data'] });
+
+      const [settingsResult, alertsResult, zonesResult] = await Promise.all([
         fetchVisionSettings(selectedCameraId),
         fetchAlerts({ cameraId: selectedCameraId, limit: 100 }),
+        zonesPromise,
       ]);
 
       if (cancelled) return;
@@ -78,12 +90,21 @@ export default function MonitorPage() {
 
       setAlerts(alertsResult.ok && alertsResult.data ? alertsResult.data.map((alert) => ({ ...alert, persisted: true })) : []);
 
+      setRestrictedZones(
+        zonesResult.ok && zonesResult.data
+          ? zonesResult.data.map((zone) => ({ id: zone.id, name: zone.name, rect: zone.rect }))
+          : [],
+      );
+
       settingsLoaded.current = true;
     })();
 
     return () => {
       cancelled = true;
     };
+    // selectedCamera is derived from selectedCameraId; re-running on the id
+    // alone is what we want, and reloads zones/settings/alerts together.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCameraId]);
 
   const persistSettings = useCallback(
@@ -170,9 +191,29 @@ export default function MonitorPage() {
     [selectedCameraId],
   );
 
+  const handleObservation = useCallback(
+    (observation: PipelineObservation) => {
+      // Post the CV facts and let the server decide. The browser never resolves
+      // identity or chooses to alert; if the server does raise a restricted-area
+      // alert, it arrives through the normal alerts refresh below.
+      void postObservation({ cameraId: selectedCameraId, ...observation }).then((result) => {
+        if (result.ok && result.data?.outcome === 'alert_created' && !result.data.deduped) {
+          void fetchAlerts({ cameraId: selectedCameraId, limit: 100 }).then((alertsResult) => {
+            if (alertsResult.ok && alertsResult.data) {
+              setAlerts(alertsResult.data.map((alert) => ({ ...alert, persisted: true })));
+            }
+          });
+        }
+      });
+    },
+    [selectedCameraId],
+  );
+
   const pipeline = useVisionPipeline({
     settings,
     onAlert: handleAlert,
+    onObservation: handleObservation,
+    restrictedZones,
     createSource: selectedCamera ? () => createCameraSource(selectedCamera) : undefined,
   });
 

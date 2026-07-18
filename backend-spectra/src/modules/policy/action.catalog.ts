@@ -62,13 +62,14 @@ export const ACTION_CATALOG: readonly ActionDefinition[] = Object.freeze([
     key: 'restricted_area',
     label: 'Restricted area',
     description:
-      'A person is present inside a named restricted zone. Rules are written per zone, and apply only when a readable, registered AprilTag identifies the person.',
+      'A tracked person has walked into a named restricted zone. Rules are written per zone. An allowed rule requires a readable, registered AprilTag identifying the person; anyone the camera cannot identify is treated by the unidentified-person policy.',
     scope: 'zone',
-    // Flipped to 'live'/true by the phase that ships restricted-area
-    // detection. Until then the UI must not imply a rule has any effect.
-    detector: 'planned',
+    // Live and enforced as of Phase 3C: a confirmed entry is evaluated
+    // server-side against per-zone role rules and the unidentified-person
+    // policy, and either alerts or is suppressed and audited.
+    detector: 'live',
     configurable: true,
-    policyEnforced: false,
+    policyEnforced: true,
     requiresSnapshot: true,
     defaultSeverity: 'warning',
   },

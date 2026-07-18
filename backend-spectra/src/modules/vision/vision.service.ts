@@ -4,12 +4,16 @@ import {
   OPEN_ALERT_STATUSES,
   acknowledgedForStatus,
   defaultDetectorConfigs,
+  defaultRestrictedAreaSettings,
   defaultSeverityForType,
   type AlertSeverity,
   type AlertStatus,
   type AnyDetectionType,
   type DetectionType,
+  type PolicyAlertType,
 } from './vision.types.js';
+import type { PolicySubject, UnidentifiedReason } from '../policy/policy.types.js';
+import type { RuleSource } from '../policy/action.catalog.js';
 
 export async function getSettings(cameraId: string) {
   let settings = await VisionSettings.findOne({ cameraId });
@@ -26,9 +30,19 @@ export async function getSettings(cameraId: string) {
 
   const existingTypes = new Set(settings.detectors.map((detector) => detector.type));
   const missing = DETECTOR_CONFIG_TYPES.filter((type) => !existingTypes.has(type));
+  let dirty = false;
   if (missing.length > 0) {
     const backfill = defaultDetectorConfigs().filter((detector) => missing.includes(detector.type));
     settings.detectors.push(...(backfill as (typeof settings.detectors)[number][]));
+    dirty = true;
+  }
+  // Settings created before restricted-area enforcement have no thresholds;
+  // give them the defaults so enforcement has a gate to run.
+  if (!settings.restrictedArea) {
+    settings.restrictedArea = defaultRestrictedAreaSettings() as typeof settings.restrictedArea;
+    dirty = true;
+  }
+  if (dirty) {
     await settings.save();
   }
 
@@ -185,6 +199,90 @@ export async function createAlert(input: CreateAlertInput) {
     lastOccurredAt: now,
   });
 
+  const retentionDays = settings.retentionDays ?? 14;
+  const cutoff = new Date(Date.now() - retentionDays * 86_400_000);
+  VisionAlert.deleteMany({ cameraId: input.cameraId, createdAt: { $lt: cutoff } }).exec();
+
+  return { alert, deduped: false as const };
+}
+
+/** Provenance recorded on a policy-created alert — mirrors the alertPolicySchema. */
+export interface AlertPolicyProvenance {
+  decisionId: string;
+  subject: PolicySubject;
+  ruleSource: RuleSource;
+  unidentifiedReason: UnidentifiedReason | null;
+  personId: string | null;
+  personName: string | null;
+  roleKey: string | null;
+  aprilTagId: number | null;
+  zoneId: string | null;
+}
+
+interface CreatePolicyAlertInput {
+  cameraId: string;
+  type: PolicyAlertType;
+  severity: AlertSeverity;
+  confidence: number;
+  message: string;
+  zoneName: string | null;
+  snapshot: string;
+  metadata: Record<string, unknown>;
+  /** Groups repeats of the same entry; null skips grouping. */
+  trackKey: string | null;
+  cooldownSeconds: number;
+  policy: AlertPolicyProvenance;
+}
+
+/**
+ * Creates an alert the *backend* raised through policy enforcement, carrying
+ * its decision provenance.
+ *
+ * Separate from createAlert on purpose: createAlert is the browser path and is
+ * fenced to client-postable types, while a `restricted_area` alert is only
+ * ever born here, after identity resolution and a restrict rule. The grouping
+ * and retention behaviour is the same as createAlert — repeats of one entry
+ * inside the cooldown fold into the open alert instead of stacking.
+ */
+export async function createPolicyAlert(input: CreatePolicyAlertInput) {
+  const groupQuery: Record<string, unknown> = {
+    cameraId: input.cameraId,
+    type: input.type,
+    status: { $in: OPEN_ALERT_STATUSES },
+    createdAt: { $gte: new Date(Date.now() - input.cooldownSeconds * 1000) },
+  };
+  if (input.trackKey !== null) {
+    groupQuery['metadata.trackKey'] = input.trackKey;
+  }
+
+  const grouped = await VisionAlert.findOneAndUpdate(
+    groupQuery,
+    { $inc: { occurrences: 1 }, $set: { lastOccurredAt: new Date() } },
+    { new: true, sort: { createdAt: -1 } },
+  );
+  if (grouped) {
+    return { alert: grouped, deduped: true as const };
+  }
+
+  const now = new Date();
+  const alert = await VisionAlert.create({
+    cameraId: input.cameraId,
+    type: input.type,
+    severity: input.severity,
+    status: 'new',
+    read: false,
+    acknowledged: false,
+    zoneName: input.zoneName,
+    confidence: input.confidence,
+    message: input.message,
+    snapshot: input.snapshot,
+    metadata: input.metadata,
+    occurrences: 1,
+    lastOccurredAt: now,
+    policy: input.policy,
+  });
+
+  const settings = await getSettings(input.cameraId);
   const retentionDays = settings.retentionDays ?? 14;
   const cutoff = new Date(Date.now() - retentionDays * 86_400_000);
   VisionAlert.deleteMany({ cameraId: input.cameraId, createdAt: { $lt: cutoff } }).exec();

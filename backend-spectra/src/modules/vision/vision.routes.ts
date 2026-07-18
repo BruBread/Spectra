@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as visionController from './vision.controller.js';
+import * as observationsController from './observations.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
 export const visionRouter = Router();
@@ -19,6 +20,12 @@ visionRouter.put('/settings', requireAuth, requireRole('admin'), visionControlle
 visionRouter.get('/alerts', requireAuth, visionController.listAlerts);
 visionRouter.get('/alerts/counts', requireAuth, visionController.getAlertCounts);
 visionRouter.post('/alerts', requireAuth, visionController.createAlert);
+
+// Restricted-area observations. The browser posts CV facts here; the server
+// does identity resolution, the per-zone rule and suppress-or-alert. A
+// `restricted_area` alert can only be born from this path, never from
+// POST /alerts, so policy can't be bypassed by a client fabricating one.
+visionRouter.post('/observations', requireAuth, observationsController.postObservation);
 visionRouter.post('/alerts/read-all', requireAuth, visionController.markAllAlertsRead);
 visionRouter.patch('/alerts/:id/status', requireAuth, visionController.updateAlertStatus);
 visionRouter.patch('/alerts/:id/read', requireAuth, visionController.markAlertRead);

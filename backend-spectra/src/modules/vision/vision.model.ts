@@ -1,5 +1,11 @@
 import { Schema, model } from 'mongoose';
-import { ALERT_SEVERITIES, ALERT_STATUSES, ALL_DETECTION_TYPES, DETECTOR_CONFIG_TYPES } from './vision.types.js';
+import {
+  ALERT_SEVERITIES,
+  ALERT_STATUSES,
+  ALL_DETECTION_TYPES,
+  DETECTOR_CONFIG_TYPES,
+  defaultRestrictedAreaSettings,
+} from './vision.types.js';
 import { RULE_SOURCES } from '../policy/action.catalog.js';
 import { POLICY_SUBJECTS, UNIDENTIFIED_REASONS } from '../policy/policy.types.js';
 
@@ -27,12 +33,28 @@ const detectionTypeConfigSchema = new Schema(
   { _id: false },
 );
 
+/** Quality-gate tunables for restricted-area enforcement — see RestrictedAreaSettings. */
+const restrictedAreaSettingsSchema = new Schema(
+  {
+    minFrames: { type: Number, required: true, min: 1 },
+    minDwellMs: { type: Number, required: true, min: 0 },
+    minHeightFraction: { type: Number, required: true, min: 0, max: 1 },
+    minAreaFraction: { type: Number, required: true, min: 0, max: 1 },
+    maxHeightFraction: { type: Number, required: true, min: 0, max: 1 },
+    maxAreaFraction: { type: Number, required: true, min: 0, max: 1 },
+    edgeEpsilonFraction: { type: Number, required: true, min: 0, max: 0.5 },
+    cooldownSeconds: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
 const visionSettingsSchema = new Schema(
   {
     cameraId: { type: String, required: true, unique: true, index: true },
     processingIntervalMs: { type: Number, required: true, default: 500 },
     retentionDays: { type: Number, required: true, default: 14 },
     detectors: { type: [detectionTypeConfigSchema], default: [] },
+    restrictedArea: { type: restrictedAreaSettingsSchema, default: defaultRestrictedAreaSettings },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true },

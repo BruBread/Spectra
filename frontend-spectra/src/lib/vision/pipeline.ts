@@ -9,6 +9,7 @@ import {
   type DetectedAprilTag,
 } from './models/aprilTagModel';
 import { createDetectorRegistry, type DetectionAdapter, type DetectionCandidate, type DetectorFrameInput } from './detectors';
+import { RestrictedAreaObserver, type ObserverZone } from './restrictedAreaObserver';
 
 export { _generateAprilTagSvg as generateAprilTagSvg };
 
@@ -38,9 +39,28 @@ export interface PipelineAlert {
   box?: [number, number, number, number];
 }
 
+/**
+ * A restricted-area observation ready to post. CV facts plus the evidence
+ * snapshot the pipeline captured — never an identity or a decision. What the
+ * server does with it is the server's business.
+ */
+export interface PipelineObservation {
+  zoneId: string;
+  trackId: string;
+  frame: { width: number; height: number };
+  personBox: [number, number, number, number];
+  enteredFromOutside: boolean;
+  framesInside: number;
+  dwellMs: number;
+  aprilTags: number[];
+  snapshot: string;
+}
+
 interface VisionPipelineCallbacks {
   onTick?: (result: VisionTickResult) => void;
   onAlert: (alert: PipelineAlert) => void;
+  /** A confirmed restricted-zone entry to hand to the server for evaluation. */
+  onObservation?: (observation: PipelineObservation) => void;
   onModelStatus?: (status: ModelLoadStatus) => void;
   onError?: (error: Error) => void;
 }
@@ -63,6 +83,9 @@ export class VisionPipeline {
   private aprilTagDetector: ReturnType<typeof createAprilTagDetector> | null = null;
   private aprilTagDetectorConfidence: number | null = null;
 
+  private restrictedObserver: RestrictedAreaObserver;
+  private restrictedZones: ObserverZone[] = [];
+
   private timer: number | null = null;
   private running = false;
   private ticking = false;
@@ -72,12 +95,19 @@ export class VisionPipeline {
     this.settings = initialSettings;
     this.callbacks = callbacks;
     this.detectors = createDetectorRegistry();
+    this.restrictedObserver = new RestrictedAreaObserver(initialSettings.restrictedArea);
     this.snapshotCanvas = document.createElement('canvas');
     this.aprilTagCanvas = document.createElement('canvas');
   }
 
   updateSettings(settings: VisionSettings): void {
     this.settings = settings;
+    if (settings.restrictedArea) this.restrictedObserver.updateSettings(settings.restrictedArea);
+  }
+
+  /** The restricted zones to enforce for this camera, from GET /api/zones. */
+  setRestrictedZones(zones: ObserverZone[]): void {
+    this.restrictedZones = zones;
   }
 
   async start(): Promise<void> {
@@ -105,6 +135,13 @@ export class VisionPipeline {
     const set = new Set<DetectionRequirement>();
     for (const config of this.settings.detectors) {
       if (config.enabled) set.add(DETECTION_REQUIREMENTS[config.type]);
+    }
+    // Restricted-area enforcement needs person boxes to track people and
+    // AprilTags to feed the server's identity resolution, regardless of which
+    // alerting detectors happen to be on.
+    if (this.restrictedZones.length > 0) {
+      set.add('objects');
+      set.add('apriltag');
     }
     return set;
   }
@@ -197,6 +234,30 @@ export class VisionPipeline {
       for (const candidate of candidates) {
         firedCandidates.push(candidate);
         this.emitAlert(candidate);
+      }
+    }
+
+    // Restricted-area observations: track people, spot confirmed entries, and
+    // hand each to the server. The observer emits CV facts and tag numbers
+    // only — every identity and policy decision is made server-side.
+    if (this.restrictedZones.length > 0 && this.callbacks.onObservation) {
+      const observations = this.restrictedObserver.observe(
+        { now, videoWidth, videoHeight, objects, aprilTags, aprilTagScale },
+        this.restrictedZones,
+      );
+      for (const observation of observations) {
+        const snapshot = this.captureSnapshot(observation.box);
+        this.callbacks.onObservation({
+          zoneId: observation.zoneId,
+          trackId: observation.trackId,
+          frame: observation.frame,
+          personBox: observation.personBox,
+          enteredFromOutside: observation.enteredFromOutside,
+          framesInside: observation.framesInside,
+          dwellMs: observation.dwellMs,
+          aprilTags: observation.aprilTags,
+          snapshot,
+        });
       }
     }
 
