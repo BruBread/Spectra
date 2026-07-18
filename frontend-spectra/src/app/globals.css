@@ -156,3 +156,73 @@ svg {
   white-space: nowrap;
   border: 0;
 }
+
+/*
+ * AprilTag print sheet.
+ *
+ * The sheet is portaled to <body> and hidden on screen. When printing, the
+ * whole app (sidebar, top bar, the preview dialog itself) is hidden and only
+ * this sheet is shown — one tag per page, centred, in pure black on white. Text
+ * sits above and below the marker; the generator's white quiet border is never
+ * covered or cropped.
+ */
+.aprilTagPrintSheet {
+  display: none;
+}
+
+@media print {
+  /* Hide everything, then reveal just the sheet and its contents. */
+  body * {
+    visibility: hidden;
+  }
+
+  .aprilTagPrintSheet,
+  .aprilTagPrintSheet * {
+    visibility: visible;
+  }
+
+  .aprilTagPrintSheet {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8mm;
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #000000;
+  }
+
+  .aprilTagPrintName {
+    margin: 0;
+    font-size: 16pt;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .aprilTagPrintCaption {
+    margin: 0;
+    font-size: 12pt;
+    text-align: center;
+  }
+
+  /* At least 8–10 cm wide: the marker's black square is 8/10 of this box. */
+  .aprilTagPrintTag svg {
+    display: block;
+    width: 10cm;
+    height: 10cm;
+    shape-rendering: crispEdges;
+  }
+
+  /* One tag per page. */
+  .aprilTagPrintSheet {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

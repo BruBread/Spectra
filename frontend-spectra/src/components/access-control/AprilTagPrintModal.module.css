@@ -1,0 +1,107 @@
+.previewLayout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+/*
+ * A plain white mount for the marker. It is always white regardless of theme,
+ * so the printed and on-screen tag read identically and the quiet border the
+ * generator draws is never lost against a dark surface. Nothing is layered over
+ * the SVG — this only frames it.
+ */
+.tagFrame {
+  background: #ffffff;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  line-height: 0;
+}
+
+.tagFrame svg {
+  display: block;
+  width: 220px;
+  height: 220px;
+  /* The marker is a tiny integer-unit grid scaled up; keep the edges hard. */
+  shape-rendering: crispEdges;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 10px 28px;
+  margin: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+.meta dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.meta dd {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.guidance {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.guidanceTitle {
+  margin: 0 0 6px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.guidance ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-text);
+}
+
+.error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-danger);
+}
+
+.error p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.footerRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}

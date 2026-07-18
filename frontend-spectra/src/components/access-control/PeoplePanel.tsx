@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { IdCard, Loader2, PlugZap, Plus, RefreshCw, SearchX, UserPlus, Vibrate } from 'lucide-react';
+import { IdCard, Loader2, PlugZap, Plus, Printer, RefreshCw, SearchX, UserPlus, Vibrate } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { failed, loaded, loading, type LoadState } from '../../lib/accessControl/loadState';
 import type { AccessRole, LoraDevice, Person } from '../../lib/accessControl/types';
 import { fetchLoraDevices, fetchPeople, updatePerson } from '../../lib/api/accessControl';
 import { fetchDeviceCapabilities, type DeviceCapabilities } from '../../lib/api/deviceCommands';
 import { TestHapticModal } from './TestHapticModal';
+import { AprilTagPrintModal } from './AprilTagPrintModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -48,6 +49,7 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
   // where it could only 403.
   const [capabilities, setCapabilities] = useState<DeviceCapabilities | null>(null);
   const [testingPerson, setTestingPerson] = useState<Person | null>(null);
+  const [printingPerson, setPrintingPerson] = useState<Person | null>(null);
 
   const filtersActive = debouncedSearch !== '' || roleFilter !== 'all' || statusFilter !== 'all';
 
@@ -85,8 +87,8 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
 
   useEffect(() => {
     // Simulation availability is a backend fact; if the probe fails we simply
-    // leave the affordance hidden rather than guess.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- probing the backend once on mount
+    // leave the affordance hidden rather than guess. setState here is inside an
+    // async callback, so it doesn't trip the set-state-in-effect rule.
     void fetchDeviceCapabilities().then((result) => {
       if (result.ok && result.data) setCapabilities(result.data);
     });
@@ -153,6 +155,13 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
           </Button>
           {canEdit ? (
             <>
+              {/* Print the physical AprilTag: admin only, and only for someone
+                  who actually has one assigned. */}
+              {person.aprilTagId !== null ? (
+                <Button variant="ghost" size="sm" onClick={() => setPrintingPerson(person)}>
+                  <Printer size={14} aria-hidden="true" /> Print AprilTag
+                </Button>
+              ) : null}
               {/* Simulated haptic test: admin only, active person with an
                   assigned LoRa device, and only where simulation is enabled. */}
               {capabilities?.simulationEnabled && person.active && person.loraDeviceId ? (
@@ -300,6 +309,10 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
 
       {testingPerson && capabilities ? (
         <TestHapticModal person={testingPerson} capabilities={capabilities} onClose={() => setTestingPerson(null)} />
+      ) : null}
+
+      {printingPerson ? (
+        <AprilTagPrintModal person={printingPerson} onClose={() => setPrintingPerson(null)} />
       ) : null}
 
       {viewing ? (
