@@ -42,6 +42,24 @@ function toAckSubdoc(ack: GatewayAck) {
 }
 
 /**
+ * The append-only delivery-event trail, guaranteed present before it is read.
+ *
+ * The schema always materializes `delivery` (it has a default), and every write
+ * path — `create()` above and the raw-seeded fixtures — sets it, so it is never
+ * actually missing. Mongoose's `InferSchemaType` still types the nested path as
+ * optional, so rather than reach through a possibly-undefined value we assert
+ * that invariant explicitly here: if it were ever unset this throws loudly
+ * instead of silently dropping an audit event.
+ */
+function deliveryEvents(command: DeviceCommandDocument) {
+  const delivery = command.delivery;
+  if (!delivery) {
+    throw new Error(`DeviceCommand ${command.id} has no delivery trail — audit record is malformed`);
+  }
+  return delivery.events;
+}
+
+/**
  * Creates a haptic command and hands it to the active gateway.
  *
  * The record is written first (status `queued`) so the command exists in the
@@ -81,7 +99,7 @@ export async function issueHapticCommand(input: IssueHapticInput): Promise<Devic
       expiresAt: expiresAt.toISOString(),
     });
 
-    command.delivery.events.push(...toEventSubdocs(result.events));
+    deliveryEvents(command).push(...toEventSubdocs(result.events));
 
     if (!result.accepted) {
       command.status = 'failed';
@@ -105,7 +123,7 @@ export async function issueHapticCommand(input: IssueHapticInput): Promise<Devic
     const message = error instanceof Error ? error.message : 'Gateway delivery failed';
     command.status = 'failed';
     command.error = message;
-    command.delivery.events.push({
+    deliveryEvents(command).push({
       at: new Date(),
       label: 'failed',
       detail: message,
@@ -124,7 +142,7 @@ function applyAck(
   command.ack = ack;
   command.acknowledgedAt = ack.executedAt ?? ack.receivedAt;
   command.status = 'acknowledged';
-  command.delivery.events.push({
+  deliveryEvents(command).push({
     at: ack.receivedAt,
     label: 'acknowledged',
     detail: `Device acknowledged (${ack.deviceStatus || 'ok'}).`,
@@ -174,7 +192,7 @@ export async function pollPendingCommands(deviceId: string): Promise<DeviceComma
   for (const command of pending) {
     command.status = 'delivered';
     command.deliveredAt = now;
-    command.delivery.events.push({
+    deliveryEvents(command).push({
       at: now,
       label: 'delivered',
       detail: 'Handed to the bridge for over-the-air delivery.',

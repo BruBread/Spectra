@@ -29,6 +29,9 @@ function loadEnvWith(extra: Record<string, string>): Promise<{ code: number | nu
           CORS_ORIGIN: 'https://spectra.example.test',
           MOBILE_API_KEY: '',
           LORAWAN_READINGS_ALLOW_ANONYMOUS: 'false',
+          // Required in production; supplied here so the baseline is a valid
+          // production config and only the setting under test is varied.
+          DEVICE_BRIDGE_SECRET: 'a-unique-production-bridge-secret-for-this-test',
           ...extra,
         },
       },
@@ -69,6 +72,20 @@ describe('production configuration guards', () => {
 
     assert.notEqual(code, 0, 'a wildcard origin cannot be used with cookie authentication');
     assert.match(output, /CORS_ORIGIN must list explicit origins in production/);
+  });
+
+  it('refuses to start without a device bridge secret', async () => {
+    const { code, output } = await loadEnvWith({ DEVICE_BRIDGE_SECRET: '' });
+
+    assert.notEqual(code, 0, 'the bridge cannot be safely exposed without a shared secret');
+    assert.match(output, /DEVICE_BRIDGE_SECRET must be set/);
+  });
+
+  it('refuses to start with haptic simulation enabled', async () => {
+    const { code, output } = await loadEnvWith({ DEVICE_SIMULATION_ENABLED: 'true' });
+
+    assert.notEqual(code, 0, 'simulated haptic delivery must never run in production');
+    assert.match(output, /DEVICE_SIMULATION_ENABLED=true is prohibited in production/);
   });
 
   it('starts when neither development-only setting is present', async () => {
