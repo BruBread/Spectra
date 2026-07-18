@@ -217,10 +217,30 @@ export default function MonitorPage() {
     createSource: selectedCamera ? () => createCameraSource(selectedCamera) : undefined,
   });
 
+  // A URL/stream camera (HLS) is a passive network feed with no permission
+  // prompt, so it starts on its own — the same way it does on the Cameras page,
+  // and so a camera that's already "live" there isn't dead here behind a click.
+  // The browser webcam and local devices are deliberately excluded: a real
+  // camera must not switch on without an explicit user action.
+  const autoStartsUnattended = selectedCamera?.sourceType === 'hls-stream';
+  const autoStartedCameraRef = useRef<string | null>(null);
+
   const handleCameraChange = (id: string) => {
     pipeline.stop();
+    // Let the newly selected camera auto-start if it qualifies.
+    autoStartedCameraRef.current = null;
     setSelectedCameraId(id);
   };
+
+  useEffect(() => {
+    if (!autoStartsUnattended) return;
+    if (autoStartedCameraRef.current === selectedCameraId) return;
+    autoStartedCameraRef.current = selectedCameraId;
+    void pipeline.start();
+    // pipeline.start is stable; re-running only when the selection or its
+    // eligibility changes is exactly what's wanted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCameraId, autoStartsUnattended]);
 
   useEffect(() => {
     if (!pipeline.tickResult) return;

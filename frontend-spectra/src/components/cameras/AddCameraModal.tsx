@@ -2,8 +2,8 @@
 
 import { useState, type FormEvent } from 'react';
 import Hls from 'hls.js';
-import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
-import type { CameraSourceType, NewCameraInput } from '../../lib/cameras/types';
+import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
+import type { CameraRecord, CameraSourceType, NewCameraInput } from '../../lib/cameras/types';
 import { CAMERA_SOURCE_LABELS } from '../../lib/cameras/types';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
@@ -14,7 +14,10 @@ import styles from './AddCameraModal.module.css';
 interface AddCameraModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (input: NewCameraInput) => Promise<unknown>;
+  /** Returns the created camera, or null when the backend refused it. */
+  onSubmit: (input: NewCameraInput) => Promise<CameraRecord | null>;
+  /** Stream URLs already registered — used to reject a duplicate before submitting. */
+  existingStreamUrls: string[];
 }
 
 const ZONES = ['Zone A', 'Zone B', 'Zone C', 'Zone D'];
@@ -22,7 +25,7 @@ const SOURCE_TYPES: CameraSourceType[] = ['local-device', 'hls-stream', 'mjpeg-s
 
 type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
 
-export function AddCameraModal({ open, onClose, onSubmit }: AddCameraModalProps) {
+export function AddCameraModal({ open, onClose, onSubmit, existingStreamUrls }: AddCameraModalProps) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [zone, setZone] = useState(ZONES[0]);
@@ -146,7 +149,15 @@ export function AddCameraModal({ open, onClose, onSubmit }: AddCameraModalProps)
     event.preventDefault();
     const nextErrors: typeof errors = {};
     if (!name.trim()) nextErrors.name = 'Camera name is required.';
-    if (sourceType !== 'local-device' && !streamUrl.trim()) nextErrors.streamUrl = 'Stream URL is required.';
+    const trimmedUrl = streamUrl.trim();
+    if (sourceType !== 'local-device') {
+      if (!trimmedUrl) {
+        nextErrors.streamUrl = 'Stream URL is required.';
+      } else if (existingStreamUrls.includes(trimmedUrl)) {
+        // Same URL = same physical stream, which would show an identical feed.
+        nextErrors.streamUrl = 'A camera with this stream URL already exists.';
+      }
+    }
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -154,15 +165,25 @@ export function AddCameraModal({ open, onClose, onSubmit }: AddCameraModalProps)
 
     setSubmitting(true);
     try {
-      await onSubmit({
+      const created = await onSubmit({
         name: name.trim(),
         location: location.trim(),
         zone,
         sourceType,
-        streamUrl: sourceType === 'local-device' ? undefined : streamUrl.trim(),
+        streamUrl: sourceType === 'local-device' ? undefined : trimmedUrl,
         preferredDeviceId: sourceType === 'local-device' ? selectedDeviceId || undefined : undefined,
         preferredDeviceLabel: sourceType === 'local-device' ? selectedDevice?.label || undefined : undefined,
       });
+      if (!created) {
+        // The backend refused it (a duplicate that raced past the check above,
+        // or it's unreachable). The reason is surfaced as a toast; keep the form
+        // open so the entered values aren't lost. Show it inline too if it's a
+        // known duplicate.
+        if (sourceType !== 'local-device' && existingStreamUrls.includes(trimmedUrl)) {
+          setErrors((current) => ({ ...current, streamUrl: 'A camera with this stream URL already exists.' }));
+        }
+        return;
+      }
       reset();
       onClose();
     } finally {
@@ -238,6 +259,16 @@ export function AddCameraModal({ open, onClose, onSubmit }: AddCameraModalProps)
           </div>
         ) : (
           <div className={styles.deviceSection}>
+            {sourceType === 'mjpeg-stream' ? (
+              <p className={styles.formatWarning} role="note">
+                <AlertTriangle size={15} aria-hidden="true" />
+                <span>
+                  <strong>AI detection isn’t supported for MJPEG cameras.</strong> This source renders as a live
+                  preview only — no object, weapon, unattended-object, or restricted-area detection runs on it. Use a
+                  local device or HLS stream if you need AI monitoring.
+                </span>
+              </p>
+            ) : null}
             <Input
               label={sourceType === 'hls-stream' ? 'HLS stream URL (.m3u8)' : 'MJPEG stream URL'}
               placeholder={sourceType === 'hls-stream' ? 'https://example.com/stream/index.m3u8' : 'http://camera-ip/video.mjpg'}
@@ -246,13 +277,9 @@ export function AddCameraModal({ open, onClose, onSubmit }: AddCameraModalProps)
                 setStreamUrl(event.target.value);
                 setTestStatus('idle');
                 setTestMessage(null);
+                setErrors((current) => ({ ...current, streamUrl: undefined }));
               }}
               error={errors.streamUrl}
-              hint={
-                sourceType === 'mjpeg-stream'
-                  ? 'AI detection isn’t available for MJPEG yet — it renders as a live preview only.'
-                  : undefined
-              }
             />
             <div className={styles.testRow}>
               <Button type="button" variant="secondary" size="sm" onClick={() => void testStreamUrl()} disabled={!streamUrl.trim() || testStatus === 'testing'}>

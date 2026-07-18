@@ -47,6 +47,25 @@
   font-weight: 500;
 }
 
+.formatWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warning);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+.formatWarning svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--color-warning);
+}
+
 .testRow {
   display: flex;
   align-items: center;

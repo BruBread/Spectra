@@ -78,9 +78,11 @@ export default function CamerasPage() {
       <AddCameraModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
+        existingStreamUrls={cameras.map((camera) => camera.streamUrl).filter((url): url is string => Boolean(url))}
         onSubmit={async (input) => {
           const created = await addCamera(input);
           if (created) showToast(`${input.name} camera added`, 'success');
+          return created;
         }}
       />
     </div>

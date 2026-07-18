@@ -23,9 +23,15 @@ export async function createCamera(req: Request, res: Response, next: NextFuncti
       res.status(400).json({ error: 'name and a valid sourceType are required' });
       return;
     }
-    if ((sourceType === 'hls-stream' || sourceType === 'mjpeg-stream') && !streamUrl) {
-      res.status(400).json({ error: 'streamUrl is required for hls-stream and mjpeg-stream cameras' });
-      return;
+    if (sourceType === 'hls-stream' || sourceType === 'mjpeg-stream') {
+      if (!streamUrl) {
+        res.status(400).json({ error: 'streamUrl is required for hls-stream and mjpeg-stream cameras' });
+        return;
+      }
+      if (await camerasService.streamUrlInUse(streamUrl)) {
+        res.status(409).json({ error: 'A camera with this stream URL already exists.' });
+        return;
+      }
     }
 
     const camera = await camerasService.createCamera(
@@ -68,6 +74,13 @@ export async function updateCamera(req: Request, res: Response, next: NextFuncti
       if (req.body?.[field] !== undefined) {
         updates[field] = req.body[field];
       }
+    }
+
+    // Changing a camera's stream URL can't land it on one another camera already
+    // uses — that would recreate the duplicate-feed problem via editing.
+    if (typeof updates.streamUrl === 'string' && (await camerasService.streamUrlInUse(updates.streamUrl, String(req.params.id)))) {
+      res.status(409).json({ error: 'A camera with this stream URL already exists.' });
+      return;
     }
 
     const camera = await camerasService.updateCamera(String(req.params.id), updates, req.user!.id);
