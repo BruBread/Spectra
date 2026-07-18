@@ -98,6 +98,43 @@ function resolveMobileApiKey(): string {
   return key;
 }
 
+/**
+ * The haptic simulation is a development affordance, never a shipping feature.
+ * It fabricates a labelled wristband and a fake round-trip so the workflow can
+ * be exercised with no LoRa hardware present. Turning it on in production would
+ * let an admin believe a real wristband buzzed when nothing was ever sent, so a
+ * misconfiguration must fail loudly at boot rather than quietly lie.
+ *
+ * Off by default in production; defaults on only in local/development.
+ */
+function resolveDeviceSimulationEnabled(): boolean {
+  const raw = process.env.DEVICE_SIMULATION_ENABLED?.toLowerCase();
+  const enabled = raw === undefined ? !isProduction : raw === 'true';
+  if (enabled && isProduction) {
+    throw new Error(
+      'DEVICE_SIMULATION_ENABLED=true is prohibited in production: simulated haptic delivery fabricates a wristband round-trip and never touches real hardware, so it must never run against a live deployment. Unset it or set it to false. Real delivery is the job of the Raspberry Pi + SX1278 bridge — see docs/pi-sx1278-bridge.md.',
+    );
+  }
+  return enabled;
+}
+
+/**
+ * Shared secret the future Raspberry Pi bridge signs its requests with. There
+ * is no dev default on purpose: an empty secret means the bridge endpoints
+ * refuse every caller (see bridge.auth.ts), which is the safe posture while no
+ * bridge exists. In production a missing secret is a hard boot error — leaving
+ * the bridge silently unauthenticated is not an option.
+ */
+function resolveDeviceBridgeSecret(): string {
+  const value = process.env.DEVICE_BRIDGE_SECRET ?? '';
+  if (isProduction && !value) {
+    throw new Error(
+      'DEVICE_BRIDGE_SECRET must be set to a unique random value in production: the Raspberry Pi bridge authenticates with it, and without it the bridge endpoints cannot be safely exposed. Never reuse a webhook secret for it.',
+    );
+  }
+  return value;
+}
+
 const cookieSameSite = (process.env.SESSION_COOKIE_SAMESITE ?? 'lax').toLowerCase() as 'lax' | 'strict' | 'none';
 const cookieSecure = (process.env.SESSION_COOKIE_SECURE ?? String(isProduction)).toLowerCase() === 'true';
 
@@ -140,5 +177,21 @@ export const env = {
     mqttUsername: process.env.MQTT_USERNAME ?? '',
     mqttPassword: process.env.MQTT_PASSWORD ?? '',
     mqttTopic: process.env.MQTT_TOPIC ?? '',
+  },
+  /**
+   * Wristband haptic commands. The gateway is a seam: `simulationEnabled`
+   * selects the fake in-process transport used for local demos, while the
+   * future `pi_sx1278_p2p` transport delivers over the Pi bridge — see
+   * docs/pi-sx1278-bridge.md.
+   */
+  devices: {
+    simulationEnabled: resolveDeviceSimulationEnabled(),
+    bridgeSecret: resolveDeviceBridgeSecret(),
+    /**
+     * How long a queued haptic command stays deliverable before it is treated
+     * as stale. Short: a wristband buzz that arrives minutes late is noise, and
+     * for the simulated round-trip it only bounds the fake ack.
+     */
+    commandTtlSeconds: Number(process.env.DEVICE_COMMAND_TTL_SECONDS ?? 120),
   },
 };

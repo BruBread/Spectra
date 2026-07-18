@@ -42,6 +42,10 @@ export async function startTestServer(overrides: Record<string, string> = {}): P
     CORS_ORIGIN: 'http://localhost:3100',
     TTN_WEBHOOK_SECRET: 'test-ttn-secret',
     CHIRPSTACK_WEBHOOK_SECRET: 'test-chirpstack-secret',
+    // Device haptic simulation defaults on in local; the bridge secret is a
+    // distinct value from any webhook secret. Tests override these to exercise
+    // the disabled/closed postures.
+    DEVICE_BRIDGE_SECRET: 'test-device-bridge-secret',
     // Off unless a test opts in — these mirror the shipped defaults.
     MOBILE_API_KEY: '',
     LORAWAN_READINGS_ALLOW_ANONYMOUS: 'false',

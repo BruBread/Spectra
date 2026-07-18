@@ -16,6 +16,7 @@ import { zonesRouter } from './modules/zones/zones.routes.js';
 import { policyDecisionsRouter } from './modules/policy/policy.routes.js';
 import { actionCatalogRouter } from './modules/policy/actionCatalog.routes.js';
 import { unidentifiedPolicyRouter } from './modules/policy/unidentifiedPolicy.routes.js';
+import { deviceCommandsRouter, deviceBridgeRouter } from './modules/devices/devices.routes.js';
 import { requireAuth } from './modules/auth/auth.middleware.js';
 import { notFound } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -36,7 +37,16 @@ export function createApp() {
   app.use(cors({ origin: env.corsOrigin, credentials: true }));
   app.use(morgan(env.isProduction ? 'combined' : 'dev'));
   // 2mb to comfortably fit small JPEG alert snapshots as base64 in the JSON body.
-  app.use(express.json({ limit: '2mb' }));
+  // verify stashes the raw bytes so the device bridge can check its HMAC against
+  // exactly what arrived — a re-serialized body would not hash the same.
+  app.use(
+    express.json({
+      limit: '2mb',
+      verify: (req, _res, buf) => {
+        (req as express.Request).rawBody = buf;
+      },
+    }),
+  );
 
   app.use(
     session({
@@ -82,6 +92,11 @@ export function createApp() {
   // the guard is just "signed in".
   app.use('/api/action-catalog', requireAuth, actionCatalogRouter);
   app.use('/api/unidentified-policy', unidentifiedPolicyRouter);
+  // Wristband haptic commands. The bridge surface authenticates itself with a
+  // shared secret (no session), so it is mounted with its own guard inside the
+  // router rather than the console's.
+  app.use('/api/device-commands', deviceCommandsRouter);
+  app.use('/api/device-bridge', deviceBridgeRouter);
 
   app.use(notFound);
   app.use(errorHandler);

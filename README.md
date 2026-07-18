@@ -66,6 +66,8 @@ Key variables — see `backend-spectra/.env.example` for the full list:
 | `MOBILE_API_KEY` | **Development-only.** Scoped key for non-browser reading access; production refuses to start if set |
 | `LORAWAN_READINGS_ALLOW_ANONYMOUS` | **Development-only.** Restores pre-auth public reads; default `false`, production refuses to start if `true` |
 | `MQTT_ENABLED`, `MQTT_PROVIDER`, `MQTT_BROKER_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_TOPIC` | Optional MQTT client config |
+| `DEVICE_SIMULATION_ENABLED` | **Development-only.** Runs the simulated haptic transport; default on in local/dev, production refuses to start if `true` — see [Wristband haptic commands](#wristband-haptic-commands-pi--sx1278-bridge) |
+| `DEVICE_BRIDGE_SECRET` | Shared secret the future Pi bridge signs with. Distinct from webhook secrets; empty closes the bridge; required in production |
 
 ### Frontend (`frontend-spectra`)
 
@@ -257,7 +259,9 @@ backend-spectra/test/
 ├── actionCatalog.test.ts   the catalog, the restrict default, and its read-only API
 ├── unidentifiedPolicy.test.ts  the reserved subject's rules and attribution
 ├── zones.test.ts           zone CRUD, rectangle validation, archive vs delete
-└── policyDecisions.test.ts the read-only audit API and its storage shape
+├── policyDecisions.test.ts the read-only audit API and its storage shape
+├── deviceCommands.test.ts  test haptic, simulated delivery/ack, bridge auth + poll
+└── deviceCommands.disabled.test.ts  simulation-off / bridge-closed (production) posture
 
 frontend-spectra/e2e/
 ├── support/api.ts          login + fixture seeding through the real API
@@ -663,6 +667,66 @@ Until then, the iOS app can read readings in local/development only (via
 `X-Api-Key`, or `LORAWAN_READINGS_ALLOW_ANONYMOUS=true` during a migration
 window) and has no production path. The backend reports its access posture at
 boot, so this never fails silently.
+
+## Wristband haptic commands (Pi + SX1278 bridge)
+
+Location: `backend-spectra/src/modules/devices/`
+
+Sends haptic (vibration) commands to a person's wristband. **No LoRa hardware
+exists yet**, so this ships as a hardware-independent simulation with a clean
+seam for the future radio bridge. Full message contract:
+[`docs/pi-sx1278-bridge.md`](docs/pi-sx1278-bridge.md).
+
+> The transport is **SX1278 433 MHz private point-to-point** — a raw LoRa link
+> between a Raspberry Pi and each wristband. It is **not** LoRaWAN and shares
+> nothing with the [LoRaWAN ingest module](#lorawan-ingest-module) above.
+
+### The gateway seam
+
+`HardwareGateway` (`deviceGateway.types.ts`) is the only thing that knows how a
+command physically reaches a wristband:
+
+- `SimulatedGateway` — the default in local/development. It fabricates a labelled
+  round-trip (a `SIMULATED WRISTBAND`, a delivery, a vibration, an inline ack),
+  stamps `simulated: true` on every event, and never touches hardware.
+- `PiSx1278Gateway` — a placeholder that throws until the bridge exists. When
+  built it will queue commands for the Pi to poll and receive the device's ack
+  over HTTP.
+
+`DEVICE_SIMULATION_ENABLED` selects the simulator. It defaults on in
+local/development and the server **refuses to boot** with it set in production —
+simulated delivery must never be mistaken for real hardware.
+
+### Admin: Test Haptic
+
+Access Control → People shows a **Test Haptic** action (admin only) on any
+**active** person with an **assigned LoRa device**, and only while simulation is
+enabled. It opens a clearly labelled simulation panel showing the fabricated
+device, the delivery and vibration events, and the acknowledgement. No mock
+people, devices, or commands are ever added to normal data — the simulated
+device exists only inside the command's audit trail.
+
+`POST /api/device-commands/test-haptic` `{ personId }` creates the command;
+`GET /api/device-commands` lists them; `GET /api/device-commands/capabilities`
+tells the console whether simulation is available (so it never offers an action
+that could only 403).
+
+### The bridge API (future Pi)
+
+Under `/api/device-bridge`, authenticated by a shared-secret HMAC
+(`DEVICE_BRIDGE_SECRET`, **never** a webhook secret) with timestamp-freshness and
+nonce-replay protection — no session:
+
+- `POST /api/device-bridge/uplinks` — submit a wristband status uplink.
+- `GET /api/device-bridge/commands?deviceId=` — poll queued haptic commands
+  (marks them delivered).
+- `POST /api/device-bridge/commands/:nonce/ack` — acknowledge a command
+  (idempotent on the nonce).
+
+When `DEVICE_BRIDGE_SECRET` is unset the bridge is **closed** (`503`), never open;
+production refuses to boot without it. See
+[`docs/pi-sx1278-bridge.md`](docs/pi-sx1278-bridge.md) for the on-air frame
+format and the full HTTP contract.
 
 ## Vision alerts API
 

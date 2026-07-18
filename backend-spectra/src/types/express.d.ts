@@ -9,6 +9,12 @@ declare global {
         email: string;
         role: AdminRole;
       };
+      /**
+       * The exact bytes of the JSON body, captured by the body parser's verify
+       * hook. The device bridge signs a hash of these, so the signature must be
+       * checked against what arrived on the wire, not a re-serialization.
+       */
+      rawBody?: Buffer;
     }
   }
 }

@@ -439,3 +439,133 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---- Test haptic (simulation) ---- */
+
+.errorText {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+  color: var(--color-danger);
+}
+
+.simBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-info);
+  background: var(--color-info-soft);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.simBanner svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--color-info);
+}
+
+.simDeviceCard {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.simDeviceHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.commandResult {
+  margin-top: 16px;
+}
+
+.commandStatusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.eventList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-left: 2px solid var(--color-border);
+  padding-left: 16px;
+}
+
+.eventItem {
+  position: relative;
+}
+
+.eventDot {
+  position: absolute;
+  left: -21px;
+  top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-info);
+}
+
+.eventLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.simTag {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+
+.eventTime {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.ackCard {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.ackGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 10px 0 0;
+}
+
+.ackGrid dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.ackGrid dd {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}

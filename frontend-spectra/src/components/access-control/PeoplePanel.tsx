@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { IdCard, Loader2, PlugZap, Plus, RefreshCw, SearchX, UserPlus } from 'lucide-react';
+import { IdCard, Loader2, PlugZap, Plus, RefreshCw, SearchX, UserPlus, Vibrate } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { failed, loaded, loading, type LoadState } from '../../lib/accessControl/loadState';
 import type { AccessRole, LoraDevice, Person } from '../../lib/accessControl/types';
 import { fetchLoraDevices, fetchPeople, updatePerson } from '../../lib/api/accessControl';
+import { fetchDeviceCapabilities, type DeviceCapabilities } from '../../lib/api/deviceCommands';
+import { TestHapticModal } from './TestHapticModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -41,6 +43,11 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Person | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // The whole Test Haptic affordance is hidden unless the backend reports
+  // simulation is enabled — it is a local/development tool only, never offered
+  // where it could only 403.
+  const [capabilities, setCapabilities] = useState<DeviceCapabilities | null>(null);
+  const [testingPerson, setTestingPerson] = useState<Person | null>(null);
 
   const filtersActive = debouncedSearch !== '' || roleFilter !== 'all' || statusFilter !== 'all';
 
@@ -75,6 +82,15 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetching the LoRa device list from the backend on mount
     void loadDevices();
   }, [loadDevices]);
+
+  useEffect(() => {
+    // Simulation availability is a backend fact; if the probe fails we simply
+    // leave the affordance hidden rather than guess.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- probing the backend once on mount
+    void fetchDeviceCapabilities().then((result) => {
+      if (result.ok && result.data) setCapabilities(result.data);
+    });
+  }, []);
 
   const afterMutation = () => {
     void loadPeople();
@@ -137,6 +153,13 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
           </Button>
           {canEdit ? (
             <>
+              {/* Simulated haptic test: admin only, active person with an
+                  assigned LoRa device, and only where simulation is enabled. */}
+              {capabilities?.simulationEnabled && person.active && person.loraDeviceId ? (
+                <Button variant="ghost" size="sm" onClick={() => setTestingPerson(person)}>
+                  <Vibrate size={14} aria-hidden="true" /> Test haptic
+                </Button>
+              ) : null}
               <Button variant="secondary" size="sm" onClick={() => setEditing(person)}>
                 Edit
               </Button>
@@ -273,6 +296,10 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
             afterMutation();
           }}
         />
+      ) : null}
+
+      {testingPerson && capabilities ? (
+        <TestHapticModal person={testingPerson} capabilities={capabilities} onClose={() => setTestingPerson(null)} />
       ) : null}
 
       {viewing ? (
