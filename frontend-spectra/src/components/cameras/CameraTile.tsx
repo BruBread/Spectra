@@ -110,6 +110,11 @@ function StreamableTile({
     settings: settings ?? defaultVisionSettings(camera.id),
     onAlert: handleAlert,
     createSource: () => createCameraSource(camera),
+    // A local-device stream is shared and kept alive across views/navigation;
+    // once started on the grid it shows live in the details modal and Live
+    // Monitor too, with no second Start.
+    sessionKey: camera.id,
+    persistent: camera.sourceType === 'local-device',
   });
 
   const autoStart = camera.sourceType === 'hls-stream';

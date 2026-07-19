@@ -47,7 +47,14 @@ export class LocalDeviceSource implements CameraSource {
     this.deviceId = options.deviceId;
   }
 
-  async attach(video: HTMLVideoElement): Promise<void> {
+  /**
+   * Opens the underlying getUserMedia stream (idempotent) without binding it to
+   * a video element. Splitting this out lets one stream be shared across every
+   * <video> that displays this camera — see liveCameraManager.
+   */
+  async open(): Promise<MediaStream> {
+    if (this.stream) return this.stream;
+
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       throw new CameraSourceError('unsupported', 'This browser does not support camera access.');
     }
@@ -76,7 +83,16 @@ export class LocalDeviceSource implements CameraSource {
       }
     }
 
-    video.srcObject = this.stream;
+    return this.stream;
+  }
+
+  getStream(): MediaStream | null {
+    return this.stream;
+  }
+
+  async attach(video: HTMLVideoElement): Promise<void> {
+    const stream = await this.open();
+    video.srcObject = stream;
     await video.play();
   }
 

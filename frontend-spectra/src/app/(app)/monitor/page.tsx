@@ -215,6 +215,11 @@ export default function MonitorPage() {
     onObservation: handleObservation,
     restrictedZones,
     createSource: selectedCamera ? () => createCameraSource(selectedCamera) : undefined,
+    // The default webcam and any local-device camera share one persistent
+    // stream, so a camera already live on the Cameras page shows here without a
+    // second Start. HLS is per-view and auto-starts (below).
+    sessionKey: selectedCameraId,
+    persistent: selectedCamera ? selectedCamera.sourceType === 'local-device' : true,
   });
 
   // A URL/stream camera (HLS) is a passive network feed with no permission
