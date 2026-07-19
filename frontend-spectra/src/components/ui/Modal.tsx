@@ -31,6 +31,15 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  // Keep the latest onClose without making it an effect dependency: parents
+  // routinely pass a fresh onClose identity on every render (e.g. while typing
+  // in a field), and re-running the focus effect would yank focus back to the
+  // first focusable element (the X button) on every keystroke.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
 
@@ -43,7 +52,7 @@ export function Modal({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === 'Tab' && panel) {
@@ -71,7 +80,7 @@ export function Modal({
       document.body.style.overflow = '';
       previouslyFocused.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open || typeof document === 'undefined') return null;
 
