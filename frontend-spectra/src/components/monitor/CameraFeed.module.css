@@ -27,7 +27,9 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  transform: scaleX(-1);
+  /* The video is mirrored (selfie view) but the overlay is NOT flipped here —
+     box x-coordinates are mirrored in the draw code so they align with the
+     mirrored video while label text stays readable (not reversed). */
 }
 
 .placeholder {

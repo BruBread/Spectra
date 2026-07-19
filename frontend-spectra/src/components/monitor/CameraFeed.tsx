@@ -23,14 +23,25 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
 
   useEffect(() => {
     const canvas = overlayRef.current;
-    if (!canvas || !tickResult) return;
-
-    canvas.width = tickResult.videoWidth;
-    canvas.height = tickResult.videoHeight;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // No active tick (camera stopped or between frames): wipe stale boxes.
+    if (!tickResult) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    canvas.width = tickResult.videoWidth;
+    canvas.height = tickResult.videoHeight;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // The displayed video is mirrored (selfie view). Rather than CSS-flipping the
+    // whole canvas — which would also reverse the label text — mirror each box's
+    // x so it lands over the mirrored video, then draw text left-to-right normally.
+    const mirrorX = (x: number, w: number) => canvas.width - x - w;
 
     ctx.setLineDash([6, 4]);
     ctx.lineWidth = 2;
@@ -42,8 +53,9 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
       const y = zone.y * canvas.height;
       const w = zone.width * canvas.width;
       const h = zone.height * canvas.height;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillText(DETECTION_LABELS[type], x + 4, y + 14);
+      const mx = mirrorX(x, w);
+      ctx.strokeRect(mx, y, w, h);
+      ctx.fillText(DETECTION_LABELS[type], mx + 4, y + 14);
     }
     ctx.setLineDash([]);
 
@@ -52,8 +64,9 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
     ctx.fillStyle = 'rgba(56, 189, 248, 0.9)';
     for (const object of tickResult.objects) {
       const [x, y, w, h] = object.bbox;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillText(`${object.objectClass} ${(object.score * 100).toFixed(0)}%`, x + 4, y + 14);
+      const mx = mirrorX(x, w);
+      ctx.strokeRect(mx, y, w, h);
+      ctx.fillText(`${object.objectClass} ${(object.score * 100).toFixed(0)}%`, mx + 4, y + 14);
     }
 
     ctx.fillStyle = 'rgba(74, 222, 128, 0.9)';
@@ -64,7 +77,7 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
     for (const tag of tickResult.aprilTags) {
       ctx.beginPath();
       tag.corners.forEach((corner, index) => {
-        const x = corner.x * tickResult.aprilTagScale;
+        const x = canvas.width - corner.x * tickResult.aprilTagScale;
         const y = corner.y * tickResult.aprilTagScale;
         if (index === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -73,7 +86,7 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
       ctx.stroke();
       const first = tag.corners[0];
       if (first) {
-        ctx.fillText(`Tag ${tag.tagId}`, first.x * tickResult.aprilTagScale, first.y * tickResult.aprilTagScale - 6);
+        ctx.fillText(`Tag ${tag.tagId}`, canvas.width - first.x * tickResult.aprilTagScale, first.y * tickResult.aprilTagScale - 6);
       }
     }
 
@@ -82,7 +95,7 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
     for (const candidate of tickResult.candidates) {
       if (!candidate.box) continue;
       const [x, y, w, h] = candidate.box;
-      ctx.strokeRect(x, y, w, h);
+      ctx.strokeRect(mirrorX(x, w), y, w, h);
     }
   }, [tickResult]);
 
