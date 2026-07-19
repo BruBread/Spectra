@@ -85,15 +85,17 @@ async function setUnidentifiedRule(zId: string, rule: 'allow' | 'restrict') {
   assert.equal(response.status, 200);
 }
 
+// Seeded straight into the store with an explicit AprilTag id: the public API
+// auto-allocates tags, but these cases assert on a known tag → person mapping.
 async function createPerson(input: { name: string; roleId: string; aprilTagId?: number; active?: boolean }): Promise<string> {
-  const person = await readJson<{ _id: string }>(
-    await fetch(`${server.baseUrl}/api/people`, {
-      method: 'POST',
-      headers: jsonHeaders(adminCookie),
-      body: JSON.stringify(input),
-    }),
-  );
-  return person._id;
+  const { Person } = await import('../src/modules/identity/person.model.js');
+  const person = await Person.create({
+    name: input.name,
+    roleId: input.roleId,
+    active: input.active ?? true,
+    aprilTagId: input.aprilTagId ?? null,
+  });
+  return String(person._id);
 }
 
 interface Evaluation {

@@ -1,14 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { IdCard, Loader2, PlugZap, Plus, Printer, RefreshCw, SearchX, UserPlus, Vibrate } from 'lucide-react';
+import { IdCard, Loader2, PlugZap, Plus, Printer, RefreshCw, SearchX, Tag, Trash2, UserPlus, Vibrate } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { failed, loaded, loading, type LoadState } from '../../lib/accessControl/loadState';
 import type { AccessRole, LoraDevice, Person } from '../../lib/accessControl/types';
-import { fetchLoraDevices, fetchPeople, updatePerson } from '../../lib/api/accessControl';
+import { fetchLoraDevices, fetchPeople, issueAprilTag, updatePerson } from '../../lib/api/accessControl';
 import { fetchDeviceCapabilities, type DeviceCapabilities } from '../../lib/api/deviceCommands';
 import { TestHapticModal } from './TestHapticModal';
 import { AprilTagPrintModal } from './AprilTagPrintModal';
+import { RemovePersonModal } from './RemovePersonModal';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -38,11 +39,14 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  // Removed and deactivated people are archived out of the default view; the
+  // Status filter reveals them when needed.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
 
   const [editing, setEditing] = useState<Person | null>(null);
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Person | null>(null);
+  const [removing, setRemoving] = useState<Person | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // The whole Test Haptic affordance is hidden unless the backend reports
   // simulation is enabled — it is a local/development tool only, never offered
@@ -51,7 +55,9 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
   const [testingPerson, setTestingPerson] = useState<Person | null>(null);
   const [printingPerson, setPrintingPerson] = useState<Person | null>(null);
 
-  const filtersActive = debouncedSearch !== '' || roleFilter !== 'all' || statusFilter !== 'all';
+  // 'active' is the default view, so it doesn't count as a narrowing filter for
+  // the empty-state copy — only searching, a role, or a non-default status does.
+  const filtersActive = debouncedSearch !== '' || roleFilter !== 'all' || statusFilter !== 'active';
 
   const loadPeople = useCallback(async () => {
     setPeople((current) => (current.status === 'ok' ? current : loading([])));
@@ -114,6 +120,19 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
     afterMutation();
   };
 
+  const handleIssueAprilTag = async (person: Person) => {
+    setBusyId(person.id);
+    const result = await issueAprilTag(person.id);
+    setBusyId(null);
+
+    if (!result.ok || !result.data) {
+      showToast(result.error ?? 'Could not issue an AprilTag.', 'error');
+      return;
+    }
+    showToast(`AprilTag ${result.data.aprilTagId} issued to ${result.data.name}`, 'success');
+    afterMutation();
+  };
+
   const columns: Column<Person>[] = [
     {
       key: 'name',
@@ -155,6 +174,18 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
           </Button>
           {canEdit ? (
             <>
+              {/* Issue the next free AprilTag: admin only, for an active person
+                  who has none (e.g. reactivated after a release). */}
+              {person.active && person.aprilTagId === null ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busyId === person.id}
+                  onClick={() => void handleIssueAprilTag(person)}
+                >
+                  <Tag size={14} aria-hidden="true" /> Issue AprilTag
+                </Button>
+              ) : null}
               {/* Print the physical AprilTag: admin only, and only for someone
                   who actually has one assigned. */}
               {person.aprilTagId !== null ? (
@@ -179,6 +210,11 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
                 onClick={() => void handleToggleActive(person)}
               >
                 {person.active ? 'Deactivate' : 'Reactivate'}
+              </Button>
+              {/* Remove and release: archives the person and frees both
+                  credentials — the only path that returns a tag to the pool. */}
+              <Button variant="ghost" size="sm" onClick={() => setRemoving(person)}>
+                <Trash2 size={14} aria-hidden="true" /> Remove
               </Button>
             </>
           ) : null}
@@ -271,7 +307,7 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
                 onClick={() => {
                   setSearch('');
                   setRoleFilter('all');
-                  setStatusFilter('all');
+                  setStatusFilter('active');
                 }}
               >
                 Clear filters
@@ -299,9 +335,16 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
             setEditing(null);
           }}
           onSaved={(person) => {
+            const wasCreate = editing === null;
             setCreating(false);
             setEditing(null);
-            showToast(`${person.name} saved`, 'success');
+            // After creation, surface the automatically assigned tag number.
+            showToast(
+              wasCreate && person.aprilTagId !== null
+                ? `${person.name} added — AprilTag ${person.aprilTagId} assigned`
+                : `${person.name} saved`,
+              'success',
+            );
             afterMutation();
           }}
         />
@@ -313,6 +356,18 @@ export function PeoplePanel({ roles, canEdit, onPeopleChanged }: PeoplePanelProp
 
       {printingPerson ? (
         <AprilTagPrintModal person={printingPerson} onClose={() => setPrintingPerson(null)} />
+      ) : null}
+
+      {removing ? (
+        <RemovePersonModal
+          person={removing}
+          onClose={() => setRemoving(null)}
+          onRemoved={(person) => {
+            setRemoving(null);
+            showToast(`${person.name} removed — credentials released`, 'success');
+            afterMutation();
+          }}
+        />
       ) : null}
 
       {viewing ? (

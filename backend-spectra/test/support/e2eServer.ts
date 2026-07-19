@@ -79,6 +79,7 @@ async function main() {
    * spec that deactivates a seeded role still gets a clean slate here.
    */
   const outer = express();
+  outer.use(express.json());
   outer.post('/__test__/reset', async (_req, res, next) => {
     try {
       const { collections } = mongoose.connection;
@@ -93,6 +94,26 @@ async function main() {
       next(error);
     }
   });
+
+  /**
+   * Test-only person seeding, straight into the store.
+   *
+   * The public API auto-allocates AprilTags and won't accept a hand-picked one,
+   * but specs need to plant fixtures in *known* states — a specific tag id to
+   * match against an observation, or a tagless/credential-free person that the
+   * normal create flow can no longer produce. Like the reset above, this exists
+   * only when this harness is the entry point and never inside createApp().
+   */
+  outer.post('/__test__/seed-person', async (req, res, next) => {
+    try {
+      const { Person } = await import('../../src/modules/identity/person.model.js');
+      const doc = await Person.create(req.body);
+      res.status(201).json(doc);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   outer.use(createApp());
 
   outer.listen(PORT, () => {

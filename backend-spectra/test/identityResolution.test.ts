@@ -8,9 +8,10 @@ import { resolveIdentityFromTags } from '../src/modules/policy/identityResolutio
  * The identity resolution matrix, exercised directly.
  *
  * This is the one place a camera decides *who* it is looking at, and the whole
- * of policy hangs off it, so every failure mode gets its own case. The records
- * are created through the real API so the documents are exactly what the rest
- * of the system stores.
+ * of policy hangs off it, so every failure mode gets its own case. People are
+ * seeded straight into the store with explicit AprilTag ids: the public API
+ * auto-allocates tags, but resolution is being tested against a *known* tag →
+ * person mapping, so the fixtures set the tags directly.
  */
 
 let server: TestServer;
@@ -45,14 +46,15 @@ async function createRole(key: string, active = true): Promise<string> {
 }
 
 async function createPerson(input: { name: string; roleId: string; aprilTagId?: number; active?: boolean; loraDeviceId?: string }): Promise<string> {
-  const person = await readJson<{ _id: string }>(
-    await fetch(`${server.baseUrl}/api/people`, {
-      method: 'POST',
-      headers: jsonHeaders(adminCookie),
-      body: JSON.stringify(input),
-    }),
-  );
-  return person._id;
+  const { Person } = await import('../src/modules/identity/person.model.js');
+  const person = await Person.create({
+    name: input.name,
+    roleId: input.roleId,
+    active: input.active ?? true,
+    aprilTagId: input.aprilTagId ?? null,
+    loraDeviceId: input.loraDeviceId ?? null,
+  });
+  return String(person._id);
 }
 
 beforeEach(async () => {

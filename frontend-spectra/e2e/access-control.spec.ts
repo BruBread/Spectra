@@ -186,24 +186,73 @@ test.describe('access control: people', () => {
     await expect(page.getByText('No people registered yet')).toHaveCount(0);
   });
 
-  test('creates a person with a role and an AprilTag', async ({ page }) => {
+  test('creates a person and auto-assigns the next AprilTag', async ({ page }) => {
     const guard = await roleByKey(api, 'security_guard');
     await loginViaUi(page);
     await goTo(page, 'people');
 
     await page.getByRole('button', { name: 'Add person' }).click();
+    // No AprilTag field: the form promises automatic assignment instead.
+    await expect(dialog(page).getByLabel('AprilTag ID')).toHaveCount(0);
+    await expect(dialog(page).getByTestId('apriltag-autoassign')).toContainText(
+      'Spectra will assign the next available AprilTag automatically',
+    );
+
     await dialog(page).getByLabel('Full name').fill('E2E Guard');
     await dialog(page).getByLabel('Role').selectOption(guard._id);
-    await dialog(page).getByLabel('AprilTag ID').fill('42');
     await dialog(page).getByRole('button', { name: 'Add person' }).click();
 
+    // The first person in a fresh backend gets tag 0, shown on the row.
     const row = page.locator('tr').filter({ hasText: 'E2E Guard' });
     await expect(row).toContainText('AprilTag only');
-    await expect(row).toContainText('Tag 42');
+    await expect(row).toContainText('Tag 0');
 
     const people = await (await api.get('/api/people')).json();
     expect(people).toHaveLength(1);
-    expect(people[0].aprilTagId).toBe(42);
+    expect(people[0].aprilTagId).toBe(0);
+  });
+
+  test('issues an AprilTag to an active person who has none', async ({ page }) => {
+    const staff = await roleByKey(api, 'staff');
+    // A tagless active person — the state left after a release-then-reactivate,
+    // or a record from before automatic assignment.
+    await seedPerson(api, { name: 'E2E Untagged', roleId: staff._id });
+
+    await loginViaUi(page);
+    await goTo(page, 'people');
+
+    const row = page.locator('tr').filter({ hasText: 'E2E Untagged' });
+    await expect(row).toContainText('No credentials');
+    await row.getByRole('button', { name: 'Issue AprilTag' }).click();
+
+    await expect(row).toContainText('Tag 0');
+    const people = await (await api.get('/api/people')).json();
+    expect(people[0].aprilTagId).toBe(0);
+  });
+
+  test('removes a person and releases their credentials, after confirmation', async ({ page }) => {
+    const staff = await roleByKey(api, 'staff');
+    await seedPerson(api, { name: 'E2E Departing', roleId: staff._id, aprilTagId: 5, loraDeviceId: 'e2e-band-go' });
+
+    await loginViaUi(page);
+    await goTo(page, 'people');
+
+    await page.locator('tr').filter({ hasText: 'E2E Departing' }).getByRole('button', { name: 'Remove' }).click();
+
+    // The confirmation must spell out that both credentials become reusable.
+    const confirm = page.getByRole('dialog');
+    await expect(confirm).toContainText('AprilTag 5');
+    await expect(confirm).toContainText('reusable');
+    await confirm.getByRole('button', { name: 'Remove and release credentials' }).click();
+
+    // Gone from the default (active) view…
+    await expect(page.locator('tr').filter({ hasText: 'E2E Departing' })).toHaveCount(0);
+    // …but archived, not deleted, with both credentials cleared.
+    const all = await (await api.get('/api/people')).json();
+    expect(all).toHaveLength(1);
+    expect(all[0].active).toBe(false);
+    expect(all[0].aprilTagId).toBeNull();
+    expect(all[0].loraDeviceId).toBeNull();
   });
 
   test('states the four credential combinations for what they are', async ({ page }) => {
@@ -236,23 +285,6 @@ test.describe('access control: people', () => {
     await expect(dialog).toContainText('never identifies a person or grants permissions');
   });
 
-  test('refuses a duplicate AprilTag and names the conflict', async ({ page }) => {
-    const staff = await roleByKey(api, 'staff');
-    await seedPerson(api, { name: 'E2E Tag Holder', roleId: staff._id, aprilTagId: 7 });
-
-    await loginViaUi(page);
-    await goTo(page, 'people');
-
-    await page.getByRole('button', { name: 'Add person' }).click();
-    await dialog(page).getByLabel('Full name').fill('E2E Tag Thief');
-    await dialog(page).getByLabel('Role').selectOption(staff._id);
-    await dialog(page).getByLabel('AprilTag ID').fill('7');
-    await dialog(page).getByRole('button', { name: 'Add person' }).click();
-
-    await expect(page.getByText(/already assigned to another person/)).toBeVisible();
-    expect(await (await api.get('/api/people')).json()).toHaveLength(1);
-  });
-
   test('lists only real LoRa devices, marking assigned ones', async ({ page }) => {
     const staff = await roleByKey(api, 'staff');
     await seedPerson(api, { name: 'E2E Band Owner', roleId: staff._id, loraDeviceId: 'e2e-band-taken' });
@@ -267,20 +299,21 @@ test.describe('access control: people', () => {
     await expect(picker.locator('option', { hasText: 'e2e-band-taken' })).toContainText('assigned to E2E Band Owner');
   });
 
-  test('deactivates a person without deleting them', async ({ page }) => {
+  test('deactivates a person without deleting them, and keeps their tag reserved', async ({ page }) => {
     const staff = await roleByKey(api, 'staff');
-    await seedPerson(api, { name: 'E2E Leaver', roleId: staff._id });
+    await seedPerson(api, { name: 'E2E Leaver', roleId: staff._id, aprilTagId: 3 });
 
     await loginViaUi(page);
     await goTo(page, 'people');
     await page.locator('tr').filter({ hasText: 'E2E Leaver' }).getByRole('button', { name: 'Deactivate' }).click();
 
-    await expect(page.locator('tr').filter({ hasText: 'E2E Leaver' })).toContainText('Deactivated');
-
-    // Still on record — the credentials they held stay accounted for.
+    // Leaves the default active view once deactivated…
+    await expect(page.locator('tr').filter({ hasText: 'E2E Leaver' })).toHaveCount(0);
+    // …but is still on record, and — unlike Remove — keeps its AprilTag reserved.
     const people = await (await api.get('/api/people')).json();
     expect(people).toHaveLength(1);
     expect(people[0].active).toBe(false);
+    expect(people[0].aprilTagId).toBe(3);
   });
 });
 
@@ -456,6 +489,8 @@ test.describe('access control: operator permissions', () => {
     await expect(page.getByRole('button', { name: 'Add person' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Deactivate' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Remove' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Issue AprilTag' })).toHaveCount(0);
 
     await goTo(page, 'zones');
     await expect(page.locator('tr').filter({ hasText: 'E2E Read Only Zone' })).toBeVisible();

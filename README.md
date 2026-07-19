@@ -354,20 +354,37 @@ decided.
 
 ### People
 
-One role each in this MVP. People are never deleted — deactivate them, so the
-credentials they held stay accounted for.
+One role each in this MVP. People are never deleted — deactivate or remove them,
+so the credentials they held stay accounted for.
 
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/api/people?active=&roleId=&q=` | |
 | `GET` | `/api/people/:id` | |
-| `POST` | `/api/people` | `{ name, roleId, notes?, aprilTagId?, loraDeviceId?, active? }` |
+| `POST` | `/api/people` | `{ name, roleId, notes?, loraDeviceId?, active? }` — the server allocates the AprilTag |
 | `PATCH` | `/api/people/:id` | Also how you deactivate (`active: false`) and reassign a role (`roleId`) |
+| `POST` | `/api/people/:id/issue-apriltag` | Allocate the next free tag to an existing active person who has none |
+| `POST` | `/api/people/:id/remove` | Archive the person and release both credentials back to the pool |
 
-`aprilTagId` and `loraDeviceId` are both optional and both **unique when
-present** (`409` on a clash, `null` to release). A person may hold a badge and
-no wristband, or a wristband and no badge — but a wristband alone will never
-imply camera identity or grant permissions.
+**AprilTags are server-allocated, never client-chosen.** Every newly created
+person automatically receives the lowest available valid **AprilTag 36h11** id;
+a client-supplied `aprilTagId` on `POST` or `PATCH` is rejected with `400`. The
+valid id range (0–586) is derived from the *same* installed js-aruco2 36h11
+dictionary the frontend generator renders from, so the server can never allocate
+an id the generator would refuse to draw. When the pool is exhausted, `POST`
+returns `409`. An existing active person without a tag (registered before
+automatic assignment, or reactivated after a release) is given one via
+`issue-apriltag`.
+
+`loraDeviceId` stays optional and independent of the tag, and is **unique when
+present** (`409` on a clash, `null` to release).
+
+**Remove and release** (`/remove`) is the only path that frees an AprilTag. It
+keeps the Person record (so past policy/device audit rows still resolve) but sets
+`active: false` and clears both `aprilTagId` and `loraDeviceId`, returning both
+to the available pool and hiding the person from the default active list. An
+ordinary deactivation (`active: false` via `PATCH`) never frees a tag — a
+deactivated person keeps their credential reserved.
 
 ### LoRa device selection
 

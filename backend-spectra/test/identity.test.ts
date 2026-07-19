@@ -340,7 +340,8 @@ describe('people', () => {
     assert.equal(status, 201);
     assert.equal(person.name, 'Test Person One');
     assert.equal(person.active, true);
-    assert.equal(person.aprilTagId, null);
+    // The server auto-allocates the lowest free AprilTag; the first person gets 0.
+    assert.equal(person.aprilTagId, 0);
     assert.equal(person.loraDeviceId, null);
 
     const me = await readJson<{ id: string }>(await fetch(`${server.baseUrl}/api/auth/me`, { headers: { Cookie: adminCookie } }));
@@ -412,69 +413,211 @@ describe('people', () => {
   });
 });
 
-describe('credential uniqueness', () => {
-  it('allows many people with no AprilTag and no LoRa device', async () => {
-    // The trap a plain `sparse` unique index would fall into: these all store
-    // an explicit null, and nulls must not collide with each other.
+describe('credential rules', () => {
+  const patch = (id: string, body: unknown, cookie = adminCookie) =>
+    fetch(`${server.baseUrl}/api/people/${id}`, { method: 'PATCH', headers: jsonHeaders(cookie), body: JSON.stringify(body) });
+
+  it('allows many people with no LoRa device', async () => {
+    // Every person is auto-assigned a distinct AprilTag, but LoRa stays optional;
+    // the trap a plain `sparse` unique index would fall into is the explicit
+    // nulls colliding, which a partial index must not do.
     for (const name of ['Person A', 'Person B', 'Person C']) {
       const { status } = await createPerson({ name, roleId: staffRoleId });
-      assert.equal(status, 201, `${name} should be creatable without credentials`);
+      assert.equal(status, 201, `${name} should be creatable without a LoRa device`);
     }
   });
 
-  it('rejects a duplicate AprilTag ID', async () => {
-    assert.equal((await createPerson({ name: 'Tag Holder', roleId: staffRoleId, aprilTagId: 7 })).status, 201);
-
-    const duplicate = await createPerson({ name: 'Tag Thief', roleId: staffRoleId, aprilTagId: 7 });
-    assert.equal(duplicate.status, 409);
-    assert.match(duplicate.person.error ?? '', /AprilTag ID/);
+  it('refuses a client-supplied AprilTag on create, pointing at automatic assignment', async () => {
+    const response = await fetch(`${server.baseUrl}/api/people`, {
+      method: 'POST',
+      headers: jsonHeaders(adminCookie),
+      body: JSON.stringify({ name: 'Hand Picked', roleId: staffRoleId, aprilTagId: 42 }),
+    });
+    assert.equal(response.status, 400, 'the server owns the AprilTag — a client may not choose one');
+    assert.match((await readJson<{ error: string }>(response)).error, /assigns the next available AprilTag/i);
   });
 
-  it('rejects a duplicate LoRa device ID', async () => {
+  it('refuses a client-supplied AprilTag on update too', async () => {
+    const { person } = await createPerson({ name: 'Existing', roleId: staffRoleId });
+    const response = await patch(person._id, { aprilTagId: 99 });
+    assert.equal(response.status, 400, 'a tag can never be hand-edited, only allocated or released');
+  });
+
+  it('rejects a duplicate LoRa device ID on create and on update', async () => {
     assert.equal((await createPerson({ name: 'Band Holder', roleId: staffRoleId, loraDeviceId: 'test-band-1' })).status, 201);
 
     const duplicate = await createPerson({ name: 'Band Thief', roleId: staffRoleId, loraDeviceId: 'test-band-1' });
     assert.equal(duplicate.status, 409);
     assert.match(duplicate.person.error ?? '', /LoRa device ID/);
-  });
 
-  it('rejects a duplicate credential on update too', async () => {
-    await createPerson({ name: 'Tag Holder', roleId: staffRoleId, aprilTagId: 7 });
     const { person } = await createPerson({ name: 'Other Person', roleId: staffRoleId });
-
-    const response = await fetch(`${server.baseUrl}/api/people/${person._id}`, {
-      method: 'PATCH',
-      headers: jsonHeaders(adminCookie),
-      body: JSON.stringify({ aprilTagId: 7 }),
-    });
-    assert.equal(response.status, 409);
+    assert.equal((await patch(person._id, { loraDeviceId: 'test-band-1' })).status, 409);
   });
 
-  it('frees a credential when it is cleared, and validates its shape', async () => {
-    const { person } = await createPerson({ name: 'Tag Holder', roleId: staffRoleId, aprilTagId: 7 });
+  it('clears and validates the LoRa device, which stays independent of the tag', async () => {
+    const { person } = await createPerson({ name: 'Band Holder', roleId: staffRoleId, loraDeviceId: 'test-band-9' });
 
-    await fetch(`${server.baseUrl}/api/people/${person._id}`, {
-      method: 'PATCH',
-      headers: jsonHeaders(adminCookie),
-      body: JSON.stringify({ aprilTagId: null }),
-    });
+    const cleared = await patch(person._id, { loraDeviceId: null });
+    assert.equal(cleared.status, 200);
+    const clearedPerson = await readJson<TestPerson>(cleared);
+    assert.equal(clearedPerson.loraDeviceId, null);
+    assert.equal(clearedPerson.aprilTagId, 0, 'clearing the band leaves the auto-assigned tag intact');
 
-    const reuse = await createPerson({ name: 'New Holder', roleId: staffRoleId, aprilTagId: 7 });
-    assert.equal(reuse.status, 201, 'a released tag can be reissued');
-
-    assert.equal((await createPerson({ name: 'Bad Tag', roleId: staffRoleId, aprilTagId: -1 })).status, 400);
-    assert.equal((await createPerson({ name: 'Bad Tag', roleId: staffRoleId, aprilTagId: 1.5 })).status, 400);
+    // The freed band can be reused, and a blank one is rejected.
+    assert.equal((await createPerson({ name: 'New Band', roleId: staffRoleId, loraDeviceId: 'test-band-9' })).status, 201);
     assert.equal((await createPerson({ name: 'Bad Band', roleId: staffRoleId, loraDeviceId: '   ' })).status, 400);
   });
+});
 
-  it('allows an AprilTag with no LoRa device, and a LoRa device with no AprilTag', async () => {
-    const badgeOnly = await createPerson({ name: 'Badge Only', roleId: guardRoleId, aprilTagId: 11 });
-    assert.equal(badgeOnly.status, 201);
-    assert.equal(badgeOnly.person.loraDeviceId, null, 'a badge alone is enough to be identified by a camera');
+describe('AprilTag allocation', () => {
+  const remove = (id: string, cookie = adminCookie) =>
+    fetch(`${server.baseUrl}/api/people/${id}/remove`, { method: 'POST', headers: jsonHeaders(cookie) });
+  const patch = (id: string, body: unknown) =>
+    fetch(`${server.baseUrl}/api/people/${id}`, { method: 'PATCH', headers: jsonHeaders(adminCookie), body: JSON.stringify(body) });
 
-    const bandOnly = await createPerson({ name: 'Band Only', roleId: staffRoleId, loraDeviceId: 'test-band-2' });
-    assert.equal(bandOnly.status, 201);
-    assert.equal(bandOnly.person.aprilTagId, null, 'a band alone is storable, but can never prove camera identity');
+  it('assigns the lowest free id, sequentially', async () => {
+    const a = await createPerson({ name: 'Alpha', roleId: staffRoleId });
+    const b = await createPerson({ name: 'Bravo', roleId: staffRoleId });
+    const c = await createPerson({ name: 'Charlie', roleId: staffRoleId });
+    assert.deepEqual([a.person.aprilTagId, b.person.aprilTagId, c.person.aprilTagId], [0, 1, 2]);
+  });
+
+  it('reuses the smallest freed id after Remove and Release', async () => {
+    const a = await createPerson({ name: 'Alpha', roleId: staffRoleId }); // 0
+    const b = await createPerson({ name: 'Bravo', roleId: staffRoleId }); // 1
+    await createPerson({ name: 'Charlie', roleId: staffRoleId }); // 2
+
+    assert.equal((await remove(b.person._id)).status, 200);
+
+    // 1 is now the smallest free id — the next create fills the gap, not id 3.
+    const filled = await createPerson({ name: 'Delta', roleId: staffRoleId });
+    assert.equal(filled.person.aprilTagId, 1);
+    // And the still-held id 0 is never handed out twice.
+    assert.notEqual(a.person.aprilTagId, filled.person.aprilTagId);
+  });
+
+  it('does NOT reuse a tag after an ordinary deactivation', async () => {
+    await createPerson({ name: 'Alpha', roleId: staffRoleId }); // 0
+    const b = await createPerson({ name: 'Bravo', roleId: staffRoleId }); // 1
+
+    // A plain deactivate keeps the credential reserved.
+    assert.equal((await patch(b.person._id, { active: false })).status, 200);
+
+    const next = await createPerson({ name: 'Charlie', roleId: staffRoleId });
+    assert.equal(next.person.aprilTagId, 2, 'a deactivated person still holds their tag; only Remove and Release frees it');
+  });
+
+  it('preserves an existing tag across an unrelated edit', async () => {
+    const a = await createPerson({ name: 'Alpha', roleId: staffRoleId }); // 0
+    const renamed = await patch(a.person._id, { name: 'Alpha Renamed' });
+    assert.equal((await readJson<TestPerson>(renamed)).aprilTagId, 0);
+  });
+
+  it('hands out distinct sequential ids under concurrent creation', async () => {
+    // The unique index is the final arbiter; allocation retries on a lost race,
+    // so every concurrent create still succeeds with its own id.
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        createPerson({ name: `Concurrent ${i}`, roleId: staffRoleId }),
+      ),
+    );
+    assert.ok(results.every((r) => r.status === 201), 'every concurrent create succeeds');
+    const tags = results.map((r) => r.person.aprilTagId).sort((x, y) => (x ?? 0) - (y ?? 0));
+    assert.deepEqual(tags, [0, 1, 2, 3, 4, 5, 6, 7], 'ids are distinct and contiguous');
+  });
+
+  it('fails clearly when every id in the dictionary is taken', async () => {
+    const { Person } = await import('../src/modules/identity/person.model.js');
+    const { APRILTAG_ID_COUNT } = await import('../src/modules/identity/aprilTagDictionary.js');
+
+    // Occupy the whole pool directly, then ask the API for one more.
+    await Person.insertMany(
+      Array.from({ length: APRILTAG_ID_COUNT }, (_, id) => ({ name: `Filler ${id}`, roleId: staffRoleId, aprilTagId: id })),
+    );
+
+    const overflow = await createPerson({ name: 'One Too Many', roleId: staffRoleId });
+    assert.equal(overflow.status, 409);
+    assert.match(overflow.person.error ?? '', /No AprilTag 36h11 IDs are available/i);
+  });
+});
+
+describe('Issue AprilTag', () => {
+  const issue = (id: string, cookie = adminCookie) =>
+    fetch(`${server.baseUrl}/api/people/${id}/issue-apriltag`, { method: 'POST', headers: jsonHeaders(cookie) });
+  const remove = (id: string) => fetch(`${server.baseUrl}/api/people/${id}/remove`, { method: 'POST', headers: jsonHeaders(adminCookie) });
+  const patch = (id: string, body: unknown) =>
+    fetch(`${server.baseUrl}/api/people/${id}`, { method: 'PATCH', headers: jsonHeaders(adminCookie), body: JSON.stringify(body) });
+
+  it('allocates the next free id to a reactivated, tagless person', async () => {
+    const { person } = await createPerson({ name: 'Returner', roleId: staffRoleId }); // tag 0
+    await remove(person._id); // inactive, tag released
+    await patch(person._id, { active: true }); // active again, still no tag
+
+    const response = await issue(person._id);
+    assert.equal(response.status, 200);
+    const issued = await readJson<TestPerson>(response);
+    assert.equal(issued.aprilTagId, 0, 'the smallest free id (its old one, now free) is issued');
+    assert.equal(issued.active, true);
+  });
+
+  it('refuses to issue to a person who already has a tag', async () => {
+    const { person } = await createPerson({ name: 'Already Tagged', roleId: staffRoleId });
+    const response = await issue(person._id);
+    assert.equal(response.status, 409);
+    assert.match((await readJson<{ error: string }>(response)).error, /already holds AprilTag/i);
+  });
+
+  it('refuses to issue to an inactive person', async () => {
+    const { person } = await createPerson({ name: 'Removed', roleId: staffRoleId });
+    await remove(person._id); // inactive, tag released
+    const response = await issue(person._id);
+    assert.equal(response.status, 409);
+    assert.match((await readJson<{ error: string }>(response)).error, /active person/i);
+  });
+
+  it('is admin-only', async () => {
+    const { person } = await createPerson({ name: 'Guarded', roleId: staffRoleId });
+    await remove(person._id);
+    await patch(person._id, { active: true });
+    assert.equal((await issue(person._id, operatorCookie)).status, 403);
+  });
+});
+
+describe('Remove and release', () => {
+  const remove = (id: string, cookie = adminCookie) =>
+    fetch(`${server.baseUrl}/api/people/${id}/remove`, { method: 'POST', headers: jsonHeaders(cookie) });
+
+  it('archives the person and releases both credentials', async () => {
+    const { person } = await createPerson({ name: 'Leaver', roleId: staffRoleId, loraDeviceId: 'band-leaver' });
+
+    const response = await remove(person._id);
+    assert.equal(response.status, 200);
+    const archived = await readJson<TestPerson>(response);
+    assert.equal(archived.active, false);
+    assert.equal(archived.aprilTagId, null);
+    assert.equal(archived.loraDeviceId, null);
+
+    // The record is preserved (no hard delete) and both credentials are reusable.
+    const all = await readJson<TestPerson[]>(await fetch(`${server.baseUrl}/api/people`, { headers: { Cookie: adminCookie } }));
+    assert.equal(all.length, 1, 'the archived record still exists');
+    const reissued = await createPerson({ name: 'Newcomer', roleId: staffRoleId, loraDeviceId: 'band-leaver' });
+    assert.equal(reissued.status, 201);
+    assert.equal(reissued.person.aprilTagId, 0, 'the released tag is available again');
+  });
+
+  it('hides the removed person from the default active list', async () => {
+    const { person } = await createPerson({ name: 'Removed', roleId: staffRoleId });
+    await remove(person._id);
+    const active = await readJson<TestPerson[]>(
+      await fetch(`${server.baseUrl}/api/people?active=true`, { headers: { Cookie: adminCookie } }),
+    );
+    assert.equal(active.length, 0, 'a removed person is inactive and absent from the active list');
+  });
+
+  it('404s for an unknown person, and is admin-only', async () => {
+    assert.equal((await remove('000000000000000000000000')).status, 404);
+    const { person } = await createPerson({ name: 'Protected', roleId: staffRoleId });
+    assert.equal((await remove(person._id, operatorCookie)).status, 403);
   });
 });
 

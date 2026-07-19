@@ -171,8 +171,12 @@ export interface PersonInput {
   name: string;
   roleId: string;
   notes?: string;
-  /** null clears the credential; the backend leaves an omitted field untouched. */
-  aprilTagId?: number | null;
+  /**
+   * The AprilTag is intentionally absent: it is never client-supplied. The
+   * server allocates it on create and manages its lifecycle via Issue AprilTag
+   * and Remove and release. A LoRa device stays optional and independent; null
+   * clears it, and an omitted field is left untouched.
+   */
   loraDeviceId?: string | null;
   active?: boolean;
 }
@@ -186,6 +190,28 @@ export async function createPerson(input: PersonInput): Promise<ApiResult<Person
 /** Covers editing, role reassignment and deactivation. People are never deleted. */
 export async function updatePerson(personId: string, updates: Partial<PersonInput>): Promise<ApiResult<Person>> {
   const result = await request<Raw>(`/api/people/${personId}`, { method: 'PATCH', body: JSON.stringify(updates) });
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
+  return { data: normalizePerson(result.data), ok: true };
+}
+
+/**
+ * Allocates the next free AprilTag to an existing active person who has none —
+ * the path for people registered before automatic assignment, or reactivated
+ * after a release. The server chooses the id; there is nothing to pass.
+ */
+export async function issueAprilTag(personId: string): Promise<ApiResult<Person>> {
+  const result = await request<Raw>(`/api/people/${personId}/issue-apriltag`, { method: 'POST' });
+  if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
+  return { data: normalizePerson(result.data), ok: true };
+}
+
+/**
+ * Archives a person and releases both credentials. The record is preserved (so
+ * past decisions still resolve) but set inactive with its AprilTag and LoRa id
+ * cleared, returning both to the pool.
+ */
+export async function removeAndReleasePerson(personId: string): Promise<ApiResult<Person>> {
+  const result = await request<Raw>(`/api/people/${personId}/remove`, { method: 'POST' });
   if (!result.ok || !result.data) return { data: null, ok: result.ok, error: result.error };
   return { data: normalizePerson(result.data), ok: true };
 }

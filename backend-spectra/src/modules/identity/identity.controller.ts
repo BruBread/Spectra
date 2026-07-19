@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import mongoose from 'mongoose';
 import * as roleService from './role.service.js';
 import * as personService from './person.service.js';
+import { AprilTagPoolExhaustedError } from './person.service.js';
 import { listKnownLoraDevices } from './loraDevices.service.js';
 import { Zone } from '../zones/zones.model.js';
 import { RESERVED_ROLE_KEYS, type RolePermissions } from './identity.types.js';
@@ -217,11 +218,6 @@ async function validatePersonFields(body: Record<string, unknown>, requireCore: 
     const role = await roleService.findRoleById(body.roleId as string);
     if (!role) return 'roleId does not match an existing role';
   }
-  if (body.aprilTagId !== undefined && body.aprilTagId !== null) {
-    if (typeof body.aprilTagId !== 'number' || !Number.isInteger(body.aprilTagId) || body.aprilTagId < 0) {
-      return 'aprilTagId must be a non-negative integer, or null to clear it';
-    }
-  }
   if (body.loraDeviceId !== undefined && body.loraDeviceId !== null) {
     if (typeof body.loraDeviceId !== 'string' || !body.loraDeviceId.trim()) {
       return 'loraDeviceId must be a non-empty string, or null to clear it';
@@ -231,9 +227,22 @@ async function validatePersonFields(body: Record<string, unknown>, requireCore: 
   return null;
 }
 
+/**
+ * The AprilTag is server-allocated, never client-chosen. A body that carries one
+ * is rejected outright so a caller can never smuggle a hand-picked tag past the
+ * automatic assignment — for an existing person without one, "Issue AprilTag" is
+ * the sanctioned path.
+ */
+const APRILTAG_CLIENT_SUPPLIED =
+  'aprilTagId cannot be set by the client — Spectra assigns the next available AprilTag automatically. Use the Issue AprilTag action for an existing person without one.';
+
 export async function createPerson(req: Request, res: Response, next: NextFunction) {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
+    if (body.aprilTagId !== undefined) {
+      res.status(400).json({ error: APRILTAG_CLIENT_SUPPLIED });
+      return;
+    }
     const invalid = await validatePersonFields(body, true);
     if (invalid) {
       res.status(400).json({ error: invalid });
@@ -245,7 +254,6 @@ export async function createPerson(req: Request, res: Response, next: NextFuncti
         name: String(body.name).trim(),
         roleId: String(body.roleId),
         notes: body.notes === undefined ? undefined : String(body.notes),
-        aprilTagId: (body.aprilTagId as number | null | undefined) ?? null,
         loraDeviceId: body.loraDeviceId ? String(body.loraDeviceId).trim() : null,
         active: body.active as boolean | undefined,
       },
@@ -253,9 +261,12 @@ export async function createPerson(req: Request, res: Response, next: NextFuncti
     );
     res.status(201).json(person);
   } catch (error) {
-    const field = duplicateKeyField(error);
-    if (field === 'aprilTagId' || field === 'loraDeviceId') {
-      res.status(409).json({ error: `That ${field === 'aprilTagId' ? 'AprilTag ID' : 'LoRa device ID'} is already assigned to another person` });
+    if (error instanceof AprilTagPoolExhaustedError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    if (duplicateKeyField(error) === 'loraDeviceId') {
+      res.status(409).json({ error: 'That LoRa device ID is already assigned to another person' });
       return;
     }
     next(error);
@@ -265,6 +276,10 @@ export async function createPerson(req: Request, res: Response, next: NextFuncti
 export async function updatePerson(req: Request, res: Response, next: NextFunction) {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
+    if (body.aprilTagId !== undefined) {
+      res.status(400).json({ error: APRILTAG_CLIENT_SUPPLIED });
+      return;
+    }
     const invalid = await validatePersonFields(body, false);
     if (invalid) {
       res.status(400).json({ error: invalid });
@@ -276,7 +291,6 @@ export async function updatePerson(req: Request, res: Response, next: NextFuncti
     if (body.roleId !== undefined) updates.roleId = String(body.roleId);
     if (body.notes !== undefined) updates.notes = String(body.notes);
     if (body.active !== undefined) updates.active = body.active;
-    if (body.aprilTagId !== undefined) updates.aprilTagId = body.aprilTagId;
     if (body.loraDeviceId !== undefined) {
       updates.loraDeviceId = body.loraDeviceId === null ? null : String(body.loraDeviceId).trim();
     }
@@ -288,11 +302,50 @@ export async function updatePerson(req: Request, res: Response, next: NextFuncti
     }
     res.json(person);
   } catch (error) {
-    const field = duplicateKeyField(error);
-    if (field === 'aprilTagId' || field === 'loraDeviceId') {
-      res.status(409).json({ error: `That ${field === 'aprilTagId' ? 'AprilTag ID' : 'LoRa device ID'} is already assigned to another person` });
+    if (duplicateKeyField(error) === 'loraDeviceId') {
+      res.status(409).json({ error: 'That LoRa device ID is already assigned to another person' });
       return;
     }
+    next(error);
+  }
+}
+
+/** Admin-only: allocate the next free AprilTag to an existing active person with none. */
+export async function issueAprilTag(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await personService.issueAprilTag(String(req.params.id), req.user!.id);
+    switch (result.status) {
+      case 'not-found':
+        res.status(404).json({ error: 'Person not found' });
+        return;
+      case 'inactive':
+        res.status(409).json({ error: 'An AprilTag can only be issued to an active person.' });
+        return;
+      case 'already-assigned':
+        res.status(409).json({ error: `This person already holds AprilTag ${result.aprilTagId}.` });
+        return;
+      case 'exhausted':
+        res.status(409).json({ error: new AprilTagPoolExhaustedError().message });
+        return;
+      case 'ok':
+        res.json(result.person);
+        return;
+    }
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Admin-only: archive a person and release their AprilTag and LoRa id back to the pool. */
+export async function removeAndReleasePerson(req: Request, res: Response, next: NextFunction) {
+  try {
+    const person = await personService.removeAndReleasePerson(String(req.params.id), req.user!.id);
+    if (!person) {
+      res.status(404).json({ error: 'Person not found' });
+      return;
+    }
+    res.json(person);
+  } catch (error) {
     next(error);
   }
 }

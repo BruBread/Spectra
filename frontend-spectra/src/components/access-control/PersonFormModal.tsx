@@ -30,7 +30,6 @@ interface PersonFormModalProps {
 interface FormState {
   name: string;
   roleId: string;
-  aprilTagId: string;
   loraDeviceId: string | null;
   notes: string;
 }
@@ -41,7 +40,6 @@ function initialState(person: Person | null): FormState {
     // No default role on create: assigning one by accident is a permissions
     // decision made by the form rather than by a person.
     roleId: person?.role?.id ?? '',
-    aprilTagId: person?.aprilTagId !== null && person?.aprilTagId !== undefined ? String(person.aprilTagId) : '',
     loraDeviceId: person?.loraDeviceId ?? null,
     notes: person?.notes ?? '',
   };
@@ -61,10 +59,10 @@ export function PersonFormModal({ person, roles, devices, onClose, onSaved }: Pe
    */
   const selectableRoles = roles.filter((role) => role.active || role.id === person?.role?.id);
 
-  const parsedTag = form.aprilTagId.trim() === '' ? null : Number(form.aprilTagId);
-  const tagInvalid = parsedTag !== null && (!Number.isInteger(parsedTag) || parsedTag < 0);
-
-  const preview = credentialState({ aprilTagId: parsedTag, loraDeviceId: form.loraDeviceId });
+  // On create the tag doesn't exist yet (the server assigns it); on edit it is
+  // fixed and shown read-only, never re-chosen here.
+  const existingTag = person?.aprilTagId ?? null;
+  const preview = credentialState({ aprilTagId: existingTag, loraDeviceId: form.loraDeviceId });
 
   const handleSubmit = async () => {
     if (!form.name.trim()) {
@@ -75,16 +73,11 @@ export function PersonFormModal({ person, roles, devices, onClose, onSaved }: Pe
       setError('A role is required — every person has exactly one.');
       return;
     }
-    if (tagInvalid) {
-      setError('AprilTag ID must be a whole number of 0 or more, or blank for none.');
-      return;
-    }
 
     const input: PersonInput = {
       name: form.name.trim(),
       roleId: form.roleId,
       notes: form.notes,
-      aprilTagId: parsedTag,
       loraDeviceId: form.loraDeviceId,
     };
 
@@ -144,21 +137,28 @@ export function PersonFormModal({ person, roles, devices, onClose, onSaved }: Pe
         </div>
 
         <div>
-          <Input
-            label="AprilTag ID"
-            type="number"
-            min={0}
-            step={1}
-            inputMode="numeric"
-            placeholder="Leave blank if this person has no badge"
-            value={form.aprilTagId}
-            onChange={(event) => set('aprilTagId', event.target.value)}
-            error={tagInvalid ? 'Must be a whole number of 0 or more.' : undefined}
-          />
-          <p className={styles.fieldHint}>
-            The only credential a camera can read. A person is recognized — and their role applied — only when a
-            registered AprilTag is visible and readable in the frame.
-          </p>
+          <label className={styles.label}>AprilTag 36h11</label>
+          {person ? (
+            <p className={styles.fieldHint} data-testid="apriltag-readonly">
+              {existingTag !== null ? (
+                <>
+                  Assigned ID <span className={styles.mono}>{existingTag}</span>. AprilTags are managed automatically and
+                  cannot be edited here — use <strong>Remove and release credentials</strong> to return this tag to the
+                  pool.
+                </>
+              ) : (
+                <>
+                  This person currently has no AprilTag. Use the <strong>Issue AprilTag</strong> action to assign the next
+                  available one.
+                </>
+              )}
+            </p>
+          ) : (
+            <p className={styles.fieldHint} data-testid="apriltag-autoassign">
+              Spectra will assign the next available AprilTag automatically. AprilTags are never chosen by hand — the only
+              credential a camera can read, allocated so no two people ever share one.
+            </p>
+          )}
         </div>
 
         <LoraDevicePicker
@@ -180,13 +180,16 @@ export function PersonFormModal({ person, roles, devices, onClose, onSaved }: Pe
           />
         </div>
 
-        {/* States what this combination actually means before it is saved,
-            rather than leaving the operator to assume a wristband identifies
-            anyone. */}
-        <div className={styles.note}>
-          <CredentialBadge person={{ aprilTagId: parsedTag, loraDeviceId: form.loraDeviceId }} />
-          <span>{CREDENTIAL_MEANING[preview]}</span>
-        </div>
+        {/* States what this combination actually means, rather than leaving the
+            operator to assume a wristband identifies anyone. On create the tag
+            is assigned by the server, so the meaning is only shown once a person
+            (with a known tag) is being edited. */}
+        {person ? (
+          <div className={styles.note}>
+            <CredentialBadge person={{ aprilTagId: existingTag, loraDeviceId: form.loraDeviceId }} />
+            <span>{CREDENTIAL_MEANING[preview]}</span>
+          </div>
+        ) : null}
       </div>
     </Modal>
   );

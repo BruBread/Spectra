@@ -24,6 +24,7 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "helmet": "^8.3.0",
+    "js-aruco2": "^2.0.0",
     "mongoose": "^9.7.4",
     "morgan": "^1.11.0",
     "mqtt": "^5.15.2"

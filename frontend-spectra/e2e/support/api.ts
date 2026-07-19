@@ -110,13 +110,35 @@ export async function roleByKey(api: APIRequestContext, key: string): Promise<Se
   return role;
 }
 
+/**
+ * Plants a person in a known credential state.
+ *
+ * Uses the test-only seed route, not `POST /api/people`: the real endpoint
+ * auto-allocates the AprilTag and rejects a client-chosen one, but specs need
+ * fixtures with a specific tag (to match an observation) or with no tag/no
+ * credentials at all — states the normal create flow can no longer produce.
+ */
 export async function seedPerson(
   api: APIRequestContext,
-  person: { name: string; roleId: string; aprilTagId?: number | null; loraDeviceId?: string | null },
+  person: { name: string; roleId: string; aprilTagId?: number | null; loraDeviceId?: string | null; active?: boolean },
 ) {
-  const response = await api.post('/api/people', { data: person });
+  const response = await api.post('/__test__/seed-person', { data: person });
   if (!response.ok()) throw new Error(`seeding person failed: ${response.status()} ${await response.text()}`);
-  return (await response.json()) as { _id: string; name: string };
+  return (await response.json()) as { _id: string; name: string; aprilTagId: number | null; active: boolean };
+}
+
+/** Creates a person through the *real* API, exercising automatic tag allocation. */
+export async function createPersonViaApi(api: APIRequestContext, person: { name: string; roleId: string; loraDeviceId?: string }) {
+  const response = await api.post('/api/people', { data: person });
+  if (!response.ok()) throw new Error(`creating person failed: ${response.status()} ${await response.text()}`);
+  return (await response.json()) as { _id: string; name: string; aprilTagId: number | null };
+}
+
+/** Issues the next free AprilTag to an existing active person who has none. */
+export async function issueAprilTag(api: APIRequestContext, personId: string) {
+  const response = await api.post(`/api/people/${personId}/issue-apriltag`);
+  if (!response.ok()) throw new Error(`issuing tag failed: ${response.status()} ${await response.text()}`);
+  return (await response.json()) as { _id: string; aprilTagId: number | null };
 }
 
 export async function seedZone(
