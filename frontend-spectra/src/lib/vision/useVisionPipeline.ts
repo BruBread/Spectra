@@ -42,6 +42,13 @@ interface UseVisionPipelineOptions {
    * HLS binds MSE to one element and is never persistent.
    */
   persistent?: boolean;
+  /**
+   * Whether to run the (expensive) detection pipeline. When false the live video
+   * still shows, but no objects/tags are detected and no alerts are posted.
+   * Toggling it starts or stops detection without disturbing the stream.
+   * Defaults to true so callers that don't care keep the original behaviour.
+   */
+  detectionEnabled?: boolean;
 }
 
 export function useVisionPipeline({
@@ -52,6 +59,7 @@ export function useVisionPipeline({
   createSource,
   sessionKey = 'local',
   persistent = false,
+  detectionEnabled = true,
 }: UseVisionPipelineOptions) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const pipelineRef = useRef<VisionPipeline | null>(null);
@@ -76,6 +84,11 @@ export function useVisionPipeline({
     restrictedZonesRef.current = restrictedZones ?? [];
     pipelineRef.current?.setRestrictedZones(restrictedZones ?? []);
   }, [restrictedZones]);
+
+  const detectionEnabledRef = useRef(detectionEnabled);
+  useEffect(() => {
+    detectionEnabledRef.current = detectionEnabled;
+  }, [detectionEnabled]);
 
   const [cameraState, setCameraState] = useState<CameraState>('idle');
   const [cameraError, setCameraError] = useState<CameraErrorInfo | null>(null);
@@ -110,12 +123,18 @@ export function useVisionPipeline({
     }
   }, []);
 
-  /** Starts detection here only if no other view already owns it for this camera. */
-  const startDetectionIfOwner = useCallback(() => {
+  /**
+   * Starts detection for this view — but only when it is enabled, the video is
+   * ready, and (for shared/persistent sources) no other view already owns
+   * detection for this camera. A no-op when detection is disabled, so the live
+   * video shows without any pipeline running.
+   */
+  const startDetection = useCallback(() => {
+    if (!detectionEnabledRef.current) return;
     if (pipelineRef.current) return;
-    if (!liveCameraManager.claimDetection(sessionKey, detectionToken.current)) return;
     const video = videoRef.current;
     if (!video) return;
+    if (persistent && !liveCameraManager.claimDetection(sessionKey, detectionToken.current)) return;
 
     const pipeline = new VisionPipeline(video, settingsRef.current, {
       onAlert: (alert) => onAlertRef.current(alert),
@@ -127,7 +146,17 @@ export function useVisionPipeline({
     pipeline.setRestrictedZones(restrictedZonesRef.current);
     pipelineRef.current = pipeline;
     void pipeline.start();
-  }, [sessionKey]);
+  }, [persistent, sessionKey]);
+
+  /** Stops just detection (not the shared stream) and releases detection ownership. */
+  const stopDetection = useCallback(() => {
+    pipelineRef.current?.stop();
+    pipelineRef.current = null;
+    if (persistent) liveCameraManager.releaseDetection(sessionKey, detectionToken.current);
+    setTickResult(null);
+    setModelStatus(IDLE_MODEL_STATUS);
+    setPipelineError(null);
+  }, [persistent, sessionKey]);
 
   /** Attaches an already-open shared stream to our <video> — no getUserMedia. */
   const attachShared = useCallback(async () => {
@@ -143,17 +172,17 @@ export function useVisionPipeline({
       }
     }
     setCameraState('active');
-    startDetectionIfOwner();
+    startDetection();
     return true;
-  }, [sessionKey, startDetectionIfOwner]);
+  }, [sessionKey, startDetection]);
 
   const attachSharedRef = useRef(attachShared);
   useEffect(() => {
     attachSharedRef.current = attachShared;
   });
-  const startDetectionRef = useRef(startDetectionIfOwner);
+  const startDetectionRef = useRef(startDetection);
   useEffect(() => {
-    startDetectionRef.current = startDetectionIfOwner;
+    startDetectionRef.current = startDetection;
   });
 
   const start = useCallback(async () => {
@@ -191,16 +220,8 @@ export function useVisionPipeline({
 
       setCameraState('active');
 
-      const pipeline = new VisionPipeline(video, settingsRef.current, {
-        onAlert: (alert) => onAlertRef.current(alert),
-        onObservation: (observation) => onObservationRef.current?.(observation),
-        onTick: setTickResult,
-        onModelStatus: setModelStatus,
-        onError: (error) => setPipelineError(error.message),
-      });
-      pipeline.setRestrictedZones(restrictedZonesRef.current);
-      pipelineRef.current = pipeline;
-      await pipeline.start();
+      // Detection is gated on detectionEnabled; the video is live regardless.
+      startDetection();
     } catch (error) {
       sourceRef.current?.stop();
       sourceRef.current = null;
@@ -211,7 +232,7 @@ export function useVisionPipeline({
         setCameraError({ reason: 'unknown', message: error instanceof Error ? error.message : 'Could not start the camera.' });
       }
     }
-  }, [persistent, sessionKey, attachShared]);
+  }, [persistent, sessionKey, attachShared, startDetection]);
 
   const stop = useCallback(() => {
     if (persistent) {
@@ -277,6 +298,19 @@ export function useVisionPipeline({
       setPipelineError(null);
     };
   }, [sessionKey, persistent]);
+
+  // React to the detectionEnabled flag (and the stream going active): start or
+  // stop the pipeline live, without touching the video. Turning detection off
+  // for a running camera tears the pipeline down; turning it on spins it up.
+  useEffect(() => {
+    if (cameraState !== 'active') return;
+    if (detectionEnabled) {
+      startDetection();
+    } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- tearing the pipeline down when detection is toggled off is synchronizing the external vision system with React state, not a derived value
+      stopDetection();
+    }
+  }, [detectionEnabled, cameraState, startDetection, stopDetection]);
 
   // Non-persistent (HLS): stop fully on unmount, as before.
   useEffect(() => {

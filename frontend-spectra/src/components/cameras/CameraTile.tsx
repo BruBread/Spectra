@@ -6,6 +6,7 @@ import type { CameraRecord } from '../../lib/cameras/types';
 import { supportsDetection } from '../../lib/cameras/types';
 import { createCameraSource } from '../../lib/vision/cameraSource';
 import { useVisionPipeline } from '../../lib/vision/useVisionPipeline';
+import { DetectionOverlay } from '../vision/DetectionOverlay';
 import { fetchVisionSettings, createAlert } from '../../lib/api/vision';
 import { defaultVisionSettings } from '../../lib/vision/defaults';
 import type { PipelineAlert } from '../../lib/vision/pipeline';
@@ -106,7 +107,9 @@ function StreamableTile({
     });
   };
 
-  const { videoRef, cameraState, cameraError, modelStatus, start } = useVisionPipeline({
+  const isDetectionCapable = supportsDetection(camera.sourceType) && camera.detectionEnabled;
+
+  const { videoRef, cameraState, cameraError, modelStatus, tickResult, start } = useVisionPipeline({
     settings: settings ?? defaultVisionSettings(camera.id),
     onAlert: handleAlert,
     createSource: () => createCameraSource(camera),
@@ -115,6 +118,9 @@ function StreamableTile({
     // Monitor too, with no second Start.
     sessionKey: camera.id,
     persistent: camera.sourceType === 'local-device',
+    // Detection only runs when the camera's toggle is on — otherwise the tile
+    // shows a live preview but burns no CPU and posts no alerts.
+    detectionEnabled: isDetectionCapable,
   });
 
   const autoStart = camera.sourceType === 'hls-stream';
@@ -128,11 +134,12 @@ function StreamableTile({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart]);
 
-  const isDetectionCapable = supportsDetection(camera.sourceType) && camera.detectionEnabled;
-
   return (
     <div className={styles.stage} data-status={cameraState}>
       <video ref={videoRef} className={styles.media} muted playsInline />
+      {/* Detection boxes, drawn on the grid too (not mirrored: the tile video
+          isn't flipped). Only renders anything while a tick is present. */}
+      {isDetectionCapable ? <DetectionOverlay tick={tickResult} className={styles.detectionCanvas} /> : null}
 
       {cameraState === 'idle' ? (
         <div className={styles.overlay}>

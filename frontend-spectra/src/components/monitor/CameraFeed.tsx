@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { AlertTriangle, Camera, CameraOff, Loader2, Video } from 'lucide-react';
 import type { useVisionPipeline } from '../../lib/vision/useVisionPipeline';
-import { DETECTION_LABELS } from '../../lib/vision/types';
+import { DetectionOverlay } from '../vision/DetectionOverlay';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import styles from './CameraFeed.module.css';
@@ -19,93 +18,13 @@ const REASON_HINTS: Record<string, string> = {
 };
 
 export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, tickResult, pipelineError, start, stop }: CameraFeedProps) {
-  const overlayRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = overlayRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // No active tick (camera stopped or between frames): wipe stale boxes.
-    if (!tickResult) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      return;
-    }
-
-    canvas.width = tickResult.videoWidth;
-    canvas.height = tickResult.videoHeight;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // The displayed video is mirrored (selfie view). Rather than CSS-flipping the
-    // whole canvas — which would also reverse the label text — mirror each box's
-    // x so it lands over the mirrored video, then draw text left-to-right normally.
-    const mirrorX = (x: number, w: number) => canvas.width - x - w;
-
-    ctx.setLineDash([6, 4]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(250, 204, 21, 0.9)';
-    ctx.fillStyle = 'rgba(250, 204, 21, 0.9)';
-    ctx.font = '12px system-ui, sans-serif';
-    for (const { type, zone } of tickResult.activeZones) {
-      const x = zone.x * canvas.width;
-      const y = zone.y * canvas.height;
-      const w = zone.width * canvas.width;
-      const h = zone.height * canvas.height;
-      const mx = mirrorX(x, w);
-      ctx.strokeRect(mx, y, w, h);
-      ctx.fillText(DETECTION_LABELS[type], mx + 4, y + 14);
-    }
-    ctx.setLineDash([]);
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)';
-    ctx.fillStyle = 'rgba(56, 189, 248, 0.9)';
-    for (const object of tickResult.objects) {
-      const [x, y, w, h] = object.bbox;
-      const mx = mirrorX(x, w);
-      ctx.strokeRect(mx, y, w, h);
-      ctx.fillText(`${object.objectClass} ${(object.score * 100).toFixed(0)}%`, mx + 4, y + 14);
-    }
-
-    ctx.fillStyle = 'rgba(74, 222, 128, 0.9)';
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'rgba(244, 114, 182, 0.9)';
-    ctx.fillStyle = 'rgba(244, 114, 182, 0.9)';
-    for (const tag of tickResult.aprilTags) {
-      ctx.beginPath();
-      tag.corners.forEach((corner, index) => {
-        const x = canvas.width - corner.x * tickResult.aprilTagScale;
-        const y = corner.y * tickResult.aprilTagScale;
-        if (index === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.closePath();
-      ctx.stroke();
-      const first = tag.corners[0];
-      if (first) {
-        ctx.fillText(`Tag ${tag.tagId}`, canvas.width - first.x * tickResult.aprilTagScale, first.y * tickResult.aprilTagScale - 6);
-      }
-    }
-
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.95)';
-    for (const candidate of tickResult.candidates) {
-      if (!candidate.box) continue;
-      const [x, y, w, h] = candidate.box;
-      ctx.strokeRect(mirrorX(x, w), y, w, h);
-    }
-  }, [tickResult]);
-
   const modelsLoading = modelStatus.objects === 'loading' || modelStatus.apriltag === 'loading';
 
   return (
     <div className={styles.wrapper}>
       <div className={styles.stage} data-active={cameraState === 'active'}>
         <video ref={videoRef} className={styles.video} muted playsInline />
-        <canvas ref={overlayRef} className={styles.overlay} />
+        <DetectionOverlay tick={tickResult} mirrored className={styles.overlay} />
 
         {cameraState === 'idle' ? (
           <div className={styles.placeholder}>
