@@ -193,7 +193,7 @@ if ($existing) {
     else { Info "Starting existing MongoDB container..."; docker start spectra-mongo | Out-Null }
 } else {
     Info "Creating MongoDB container..."
-    docker run -d -p 27017:27017 --name spectra-mongo mongo | Out-Null
+    docker run -d -p 27017:27017 -v spectra-mongo-data:/data/db --name spectra-mongo mongo | Out-Null
 }
 
 # ---------------------------------------------------------------------------
