@@ -1,7 +1,7 @@
 /** Detection types a client's browser pipeline may post directly to POST /api/vision/alerts. */
-export type DetectionType = 'unattended_object';
+export type DetectionType = 'unattended_object' | 'weapon';
 
-export const DETECTION_TYPES: DetectionType[] = ['unattended_object'];
+export const DETECTION_TYPES: DetectionType[] = ['unattended_object', 'weapon'];
 
 /**
  * Alerting types the backend creates itself and a client may never post.
@@ -81,6 +81,7 @@ export const OPEN_ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under
 
 const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
   unattended_object: 'warning',
+  weapon: 'critical',
 };
 
 /**
@@ -122,6 +123,11 @@ export interface DetectionTypeConfig {
 
 const BASE_DETECTORS: DetectionTypeConfig[] = [
   { type: 'unattended_object', enabled: true, confidenceThreshold: 0.6, cooldownSeconds: 60, durationThresholdSeconds: 30, zone: null },
+  // Weapon detection runs an on-device YOLOX model. confidenceThreshold 0.45
+  // matched 0% false-positives / 96% recall in Phase-0 eval; durationThreshold 1
+  // is a light debounce (a weapon must persist ~1s) until the Phase-2 temporal
+  // gate lands. Enabled by default — a security console watches for this.
+  { type: 'weapon', enabled: true, confidenceThreshold: 0.45, cooldownSeconds: 30, durationThresholdSeconds: 1, zone: null },
   // AprilTag stays enabled and tunable: confidenceThreshold controls decode
   // strictness. It produces no alerts — cooldown and duration are inert for it
   // and only kept so one config shape covers every capability.

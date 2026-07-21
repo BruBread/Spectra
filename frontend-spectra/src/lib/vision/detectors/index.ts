@@ -1,5 +1,6 @@
 import type { DetectionAdapter } from './types';
 import { createUnattendedObjectDetector } from './unattendedObject';
+import { createWeaponDetector } from './weapon';
 
 export type { DetectionAdapter, DetectionCandidate, DetectorFrameInput } from './types';
 
@@ -16,5 +17,5 @@ export type { DetectionAdapter, DetectionCandidate, DetectorFrameInput } from '.
  * intent from body geometry and were never reliable enough to act on.
  */
 export function createDetectorRegistry(): DetectionAdapter[] {
-  return [createUnattendedObjectDetector()];
+  return [createUnattendedObjectDetector(), createWeaponDetector()];
 }

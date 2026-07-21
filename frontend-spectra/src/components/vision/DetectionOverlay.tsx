@@ -57,6 +57,19 @@ function drawDetections(canvas: HTMLCanvasElement | null, tick: VisionTickResult
     ctx.fillText(`${object.objectClass} ${(object.score * 100).toFixed(0)}%`, mx + 4, y + 14);
   }
 
+  // Live weapon boxes (thin orange): what the YOLOX model sees this frame,
+  // before the detector's veto/duration gate. A thick red box below means an
+  // alert actually fired; these just show the model is watching.
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(251, 146, 60, 0.9)';
+  ctx.fillStyle = 'rgba(251, 146, 60, 0.9)';
+  for (const weapon of tick.weapons) {
+    const [x, y, w, h] = weapon.bbox;
+    const mx = mirrorX(x, w);
+    ctx.strokeRect(mx, y, w, h);
+    ctx.fillText(`possible_weapon ${(weapon.score * 100).toFixed(0)}%`, mx + 4, y + 14);
+  }
+
   ctx.lineWidth = 2;
   ctx.strokeStyle = 'rgba(244, 114, 182, 0.9)';
   ctx.fillStyle = 'rgba(244, 114, 182, 0.9)';

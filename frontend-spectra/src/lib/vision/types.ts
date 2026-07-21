@@ -1,5 +1,5 @@
 /** Detection types the browser pipeline may post directly to POST /api/vision/alerts. */
-export type DetectionType = 'unattended_object';
+export type DetectionType = 'unattended_object' | 'weapon';
 
 /**
  * Alerting types the backend creates itself and the browser may never post.
@@ -36,7 +36,7 @@ export type RetiredDetectionType = 'loitering' | 'running' | 'fighting' | 'drown
 export type AnyDetectionType = DetectorConfigType | PolicyAlertType | RetiredDetectionType;
 
 /** What raw model output a detector needs computed for it each tick. */
-export type DetectionRequirement = 'objects' | 'apriltag';
+export type DetectionRequirement = 'objects' | 'apriltag' | 'weapons';
 
 export interface Zone {
   x: number;
@@ -126,6 +126,7 @@ export const ALERT_SEVERITY_LABELS: Record<AlertSeverity, string> = {
 
 const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
   unattended_object: 'warning',
+  weapon: 'critical',
 };
 
 /**
@@ -170,7 +171,7 @@ export interface NewVisionAlert {
 }
 
 /** Mirrors the backend's DETECTION_TYPES — what a new alert may be. */
-export const DETECTION_TYPES: DetectionType[] = ['unattended_object'];
+export const DETECTION_TYPES: DetectionType[] = ['unattended_object', 'weapon'];
 
 export const SILENT_DETECTION_TYPES: SilentDetectionType[] = ['apriltag'];
 
@@ -194,6 +195,7 @@ export const ALL_DETECTION_TYPES: AnyDetectionType[] = [
 
 export const DETECTION_LABELS: Record<DetectorConfigType, string> = {
   unattended_object: 'Unattended Object',
+  weapon: 'Possible Weapon',
   apriltag: 'AprilTag',
 };
 
@@ -216,13 +218,21 @@ export const ALL_DETECTION_LABELS: Record<AnyDetectionType, string> = {
 export const DETECTION_DESCRIPTIONS: Record<DetectorConfigType, string> = {
   unattended_object:
     'Flags valuables (bags, phones, laptops, umbrellas) left stationary with no person nearby for the configured duration.',
+  weapon:
+    'Flags a possible weapon (firearm) in view using an on-device model. Never asserts a confirmed weapon; a second object model suppresses common look-alikes (phones, remotes) to cut false alarms.',
   apriltag:
     'Decodes standard AprilTag 36h11 fiducial markers — the camera-visible identity credential. Silent: it raises no alerts and never appears in the feed. Confidence threshold sets decode strictness.',
 };
 
-export const DETECTION_REQUIREMENTS: Record<DetectorConfigType, DetectionRequirement> = {
-  unattended_object: 'objects',
-  apriltag: 'apriltag',
+/**
+ * What each detector needs computed each tick. Weapon detection needs its own
+ * YOLOX output *and* the COCO-SSD object boxes — the object model is what vetoes
+ * phone/remote look-alikes, so both must run when weapon detection is on.
+ */
+export const DETECTION_REQUIREMENTS: Record<DetectorConfigType, DetectionRequirement[]> = {
+  unattended_object: ['objects'],
+  weapon: ['weapons', 'objects'],
+  apriltag: ['apriltag'],
 };
 
 /**

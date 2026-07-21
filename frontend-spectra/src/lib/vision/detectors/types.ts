@@ -1,5 +1,6 @@
 import type { DetectedObjectBox } from '../models/objectModel';
 import type { DetectedAprilTag } from '../models/aprilTagModel';
+import type { DetectedWeaponBox } from '../models/weaponModel';
 import type { DetectionType, DetectionTypeConfig, Zone } from '../types';
 
 export interface DetectionCandidate {
@@ -18,6 +19,8 @@ export interface DetectorFrameInput {
   videoWidth: number;
   videoHeight: number;
   objects: DetectedObjectBox[];
+  /** YOLOX weapon boxes for this frame — empty unless weapon detection is on. */
+  weapons: DetectedWeaponBox[];
   aprilTags: DetectedAprilTag[];
   /** Multiply AprilTag corner coords by this to map them into video pixel coordinates. */
   aprilTagScale: number;

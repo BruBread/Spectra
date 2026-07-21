@@ -34,3 +34,6 @@ npm-debug.log*
 /blob-report/
 /playwright/.cache/
 /.next-e2e/
+
+# Weapon detection model — 20MB binary, shipped as a deploy asset not via git
+public/models/*.onnx

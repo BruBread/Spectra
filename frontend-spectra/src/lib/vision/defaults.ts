@@ -13,6 +13,14 @@ const BASE_DETECTORS: DetectionTypeConfig[] = [
     zone: null,
   },
   {
+    type: 'weapon',
+    enabled: true,
+    confidenceThreshold: 0.45,
+    cooldownSeconds: 30,
+    durationThresholdSeconds: 1,
+    zone: null,
+  },
+  {
     type: 'apriltag',
     enabled: true,
     confidenceThreshold: 0.7,

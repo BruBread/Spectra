@@ -20,7 +20,7 @@ export interface CameraErrorInfo {
   message: string;
 }
 
-const IDLE_MODEL_STATUS: ModelLoadStatus = { objects: 'idle', apriltag: 'idle' };
+const IDLE_MODEL_STATUS: ModelLoadStatus = { objects: 'idle', apriltag: 'idle', weapons: 'idle' };
 
 interface UseVisionPipelineOptions {
   settings: VisionSettings;

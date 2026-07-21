@@ -1,6 +1,7 @@
 import type { DetectionRequirement, DetectionType, DetectorConfigType, DetectionTypeConfig, VisionSettings, Zone } from './types';
 import { DETECTION_REQUIREMENTS } from './types';
 import { loadObjectModel, detectObjects, type DetectedObjectBox } from './models/objectModel';
+import { loadWeaponModel, detectWeapons, type WeaponModel, type DetectedWeaponBox } from './models/weaponModel';
 import {
   createAprilTagDetector,
   detectAprilTags,
@@ -18,10 +19,12 @@ export type ModelState = 'idle' | 'loading' | 'ready' | 'error';
 export interface ModelLoadStatus {
   objects: ModelState;
   apriltag: ModelState;
+  weapons: ModelState;
 }
 
 export interface VisionTickResult {
   objects: DetectedObjectBox[];
+  weapons: DetectedWeaponBox[];
   aprilTags: DetectedAprilTag[];
   aprilTagScale: number;
   videoWidth: number;
@@ -80,6 +83,7 @@ export class VisionPipeline {
   private aprilTagCanvas: HTMLCanvasElement;
 
   private objectModel: Awaited<ReturnType<typeof loadObjectModel>> | null = null;
+  private weaponModel: WeaponModel | null = null;
   private aprilTagDetector: ReturnType<typeof createAprilTagDetector> | null = null;
   private aprilTagDetectorConfidence: number | null = null;
 
@@ -134,7 +138,7 @@ export class VisionPipeline {
   private requiredCapabilities(): Set<DetectionRequirement> {
     const set = new Set<DetectionRequirement>();
     for (const config of this.settings.detectors) {
-      if (config.enabled) set.add(DETECTION_REQUIREMENTS[config.type]);
+      if (config.enabled) for (const req of DETECTION_REQUIREMENTS[config.type]) set.add(req);
     }
     // Restricted-area enforcement needs person boxes to track people and
     // AprilTags to feed the server's identity resolution, regardless of which
@@ -155,6 +159,7 @@ export class VisionPipeline {
     const status: ModelLoadStatus = {
       objects: this.objectModel ? 'ready' : 'idle',
       apriltag: requirements.has('apriltag') ? 'ready' : 'idle',
+      weapons: this.weaponModel ? 'ready' : 'idle',
     };
 
     if (requirements.has('objects') && !this.objectModel) {
@@ -166,6 +171,18 @@ export class VisionPipeline {
       } catch (error) {
         status.objects = 'error';
         this.callbacks.onError?.(error instanceof Error ? error : new Error('Failed to load object detection model'));
+      }
+    }
+
+    if (requirements.has('weapons') && !this.weaponModel) {
+      status.weapons = 'loading';
+      this.callbacks.onModelStatus?.({ ...status });
+      try {
+        this.weaponModel = await loadWeaponModel();
+        status.weapons = 'ready';
+      } catch (error) {
+        status.weapons = 'error';
+        this.callbacks.onError?.(error instanceof Error ? error : new Error('Failed to load weapon detection model'));
       }
     }
 
@@ -198,8 +215,12 @@ export class VisionPipeline {
     const videoHeight = this.video.videoHeight;
     const requirements = this.requiredCapabilities();
 
-    const [objects] = await Promise.all([
+    const weaponThreshold = this.configFor('weapon')?.confidenceThreshold ?? 0.45;
+    const [objects, weapons] = await Promise.all([
       requirements.has('objects') && this.objectModel ? detectObjects(this.objectModel, this.video) : Promise.resolve([]),
+      requirements.has('weapons') && this.weaponModel
+        ? detectWeapons(this.weaponModel, this.video, weaponThreshold)
+        : Promise.resolve([]),
     ]);
 
     let aprilTags: DetectedAprilTag[] = [];
@@ -224,7 +245,7 @@ export class VisionPipeline {
       }
     }
 
-    const input: DetectorFrameInput = { now, videoWidth, videoHeight, objects, aprilTags, aprilTagScale };
+    const input: DetectorFrameInput = { now, videoWidth, videoHeight, objects, weapons, aprilTags, aprilTagScale };
 
     const firedCandidates: DetectionCandidate[] = [];
     for (const detector of this.detectors) {
@@ -265,7 +286,7 @@ export class VisionPipeline {
       .filter((detector): detector is DetectionTypeConfig & { zone: Zone } => detector.enabled && detector.zone !== null)
       .map((detector) => ({ type: detector.type, zone: detector.zone }));
 
-    this.callbacks.onTick?.({ objects, aprilTags, aprilTagScale, videoWidth, videoHeight, activeZones, candidates: firedCandidates });
+    this.callbacks.onTick?.({ objects, weapons, aprilTags, aprilTagScale, videoWidth, videoHeight, activeZones, candidates: firedCandidates });
   }
 
   private emitAlert(candidate: DetectionCandidate): void {
