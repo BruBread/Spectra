@@ -215,7 +215,7 @@ export const ALL_DETECTION_LABELS: Record<AnyDetectionType, string> = {
 
 export const DETECTION_DESCRIPTIONS: Record<DetectorConfigType, string> = {
   unattended_object:
-    'Flags bags/backpacks/suitcases left stationary with no person nearby for the configured duration.',
+    'Flags valuables (bags, phones, laptops, umbrellas) left stationary with no person nearby for the configured duration.',
   apriltag:
     'Decodes standard AprilTag 36h11 fiducial markers — the camera-visible identity credential. Silent: it raises no alerts and never appears in the feed. Confidence threshold sets decode strictness.',
 };

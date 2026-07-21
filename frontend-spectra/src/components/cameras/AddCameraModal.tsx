@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import Hls from 'hls.js';
-import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
+import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
 import type { CameraRecord, CameraSourceType, NewCameraInput } from '../../lib/cameras/types';
 import { CAMERA_SOURCE_LABELS } from '../../lib/cameras/types';
 import { Modal } from '../ui/Modal';
@@ -21,7 +21,9 @@ interface AddCameraModalProps {
 }
 
 const ZONES = ['Zone A', 'Zone B', 'Zone C', 'Zone D'];
-const SOURCE_TYPES: CameraSourceType[] = ['local-device', 'hls-stream', 'mjpeg-stream'];
+// MJPEG removed from the add flow: it renders via <img> and can't feed the AI
+// detection pipeline, so only detection-capable sources are offered here.
+const SOURCE_TYPES: CameraSourceType[] = ['local-device', 'hls-stream'];
 
 type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
 
@@ -259,16 +261,12 @@ export function AddCameraModal({ open, onClose, onSubmit, existingStreamUrls }: 
           </div>
         ) : (
           <div className={styles.deviceSection}>
-            {sourceType === 'mjpeg-stream' ? (
-              <p className={styles.formatWarning} role="note">
-                <AlertTriangle size={15} aria-hidden="true" />
-                <span>
-                  <strong>AI detection isn’t supported for MJPEG cameras.</strong> This source renders as a live
-                  preview only — no object, weapon, unattended-object, or restricted-area detection runs on it. Use a
-                  local device or HLS stream if you need AI monitoring.
-                </span>
-              </p>
-            ) : null}
+            <p className={styles.deviceHint}>
+              Paste an <strong>HLS (.m3u8)</strong> URL that&rsquo;s reachable over HTTPS with{' '}
+              <strong>CORS enabled</strong> (detection reads the frames, which cross-origin streams block). An IP
+              camera that only speaks <strong>RTSP</strong> needs a bridge (e.g. MediaMTX or go2rtc) to expose an HLS
+              URL first — browsers can&rsquo;t play RTSP directly.
+            </p>
             <Input
               label={sourceType === 'hls-stream' ? 'HLS stream URL (.m3u8)' : 'MJPEG stream URL'}
               placeholder={sourceType === 'hls-stream' ? 'https://example.com/stream/index.m3u8' : 'http://camera-ip/video.mjpg'}

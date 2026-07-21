@@ -4,7 +4,9 @@ import { TrackHistory } from '../history';
 import { isInsideZone, type DetectionAdapter, type DetectionCandidate, type DetectorFrameInput } from './types';
 import type { DetectionTypeConfig } from '../types';
 
-const BAG_CLASSES = new Set(['backpack', 'handbag', 'suitcase']);
+// Valuables COCO-SSD already detects out of the box (no custom training).
+// wallet / cards / wristwatch are NOT COCO classes — those need a trained model.
+const VALUABLE_CLASSES = new Set(['backpack', 'handbag', 'suitcase', 'cell phone', 'laptop', 'umbrella']);
 const STATIONARY_WINDOW_MS = 4000;
 const STATIONARY_PX_THRESHOLD = 30;
 /** Fraction of the frame diagonal within which a person "owns" a nearby bag. */
@@ -27,7 +29,7 @@ export function createUnattendedObjectDetector(): DetectionAdapter {
     type: 'unattended_object',
     evaluate(input: DetectorFrameInput, config: DetectionTypeConfig): DetectionCandidate[] {
       const bagDetections = input.objects
-        .filter((object) => BAG_CLASSES.has(object.objectClass) && object.score >= config.confidenceThreshold)
+        .filter((object) => VALUABLE_CLASSES.has(object.objectClass) && object.score >= config.confidenceThreshold)
         .map((object) => ({ box: object.bbox, meta: { objectClass: object.objectClass, score: object.score } }));
 
       const persons = input.objects.filter((object) => object.objectClass === 'person');

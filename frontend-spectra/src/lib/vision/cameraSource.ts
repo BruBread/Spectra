@@ -67,20 +67,19 @@ export class LocalDeviceSource implements CameraSource {
         audio: false,
       });
     } catch (error) {
-      // A remembered deviceId can go stale (unplugged, different machine/browser) —
-      // fall back to whatever default camera is available rather than hard-failing.
-      if (this.deviceId) {
-        try {
-          this.stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: false,
-          });
-        } catch (fallbackError) {
-          throw mapGetUserMediaError(fallbackError);
-        }
-      } else {
-        throw mapGetUserMediaError(error);
+      // A camera pinned to a specific device must NOT silently fall back to a
+      // different camera — that made every pinned camera (USB cam, iPhone
+      // Continuity) show the built-in webcam once its device was unplugged.
+      // Surface it as unavailable so the tile shows "source not available" with
+      // a Retry; reconnecting the device and retrying binds the original source.
+      const name = error instanceof DOMException ? error.name : '';
+      if (this.deviceId && (name === 'OverconstrainedError' || name === 'NotFoundError')) {
+        throw new CameraSourceError(
+          'not-found',
+          'Source not available — the selected camera device isn’t connected. Reconnect it and press Retry.',
+        );
       }
+      throw mapGetUserMediaError(error);
     }
 
     return this.stream;
