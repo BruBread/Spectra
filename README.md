@@ -20,6 +20,31 @@ Licensed under **AGPL-3.0** — see [License](#license).
 - MongoDB running locally for LOCAL development (e.g. `mongod` on your
   machine, or `docker run -p 27017:27017 mongo`)
 
+## AI models
+
+The browser detection pipeline loads two ONNX models from
+`frontend-spectra/public/models/`, **committed to this repo** so a clone works
+on any machine with no extra setup:
+
+- `objects_yolo11.onnx` — stock Ultralytics YOLO11s (COCO classes: people,
+  valuables, weapon look-alikes). Regenerate any time with
+  `yolo export model=yolo11s.pt format=onnx imgsz=640 opset=12 simplify=True`.
+- `possible_weapon_yolo11.onnx` — fine-tuned single-class weapon detector
+  (produced by the training workspace; absent until a trained version is
+  committed).
+
+If a model file is missing the app still runs — that detector just stays
+inactive and its model status shows an error instead of `ready`.
+
+Device notes:
+- Detection runs in the viewer's browser (WebGPU when available, WASM
+  fallback — first load fetches the WASM runtime from a CDN, so the browser
+  needs internet access at least once).
+- **Local-device cameras require a secure context**: they work on
+  `http://localhost` (each teammate running the app on their own machine —
+  see the run scripts) but NOT over plain `http://<lan-ip>` from another
+  device. HLS-stream cameras work from anywhere the stream is reachable.
+
 ## Project structure
 
 ```
