@@ -268,8 +268,6 @@ describe('role permissions', () => {
 
   it('refuses a rule for an action nobody may configure, quoting the catalog', async () => {
     const cases: Array<[string, RegExp]> = [
-      // No detector exists, so a rule would apply to nothing.
-      ['possible_weapon', /not active yet/i],
       // Ownership can't be established once the owner walks away.
       ['unattended_object', /ownership cannot be established/i],
     ];
@@ -283,6 +281,30 @@ describe('role permissions', () => {
       assert.equal(response.status, 400, `${action} must not be configurable`);
       assert.match((await readJson<{ error: string }>(response)).error, expected);
     }
+  });
+
+  it('accepts a global possible_weapon rule — the security-guard exemption', async () => {
+    const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
+      method: 'PATCH',
+      headers: jsonHeaders(adminCookie),
+      body: JSON.stringify({ permissions: { actions: [{ action: 'possible_weapon', zoneId: null, rule: 'allow' }] } }),
+    });
+    assert.equal(response.status, 200);
+    const rule = (await readJson<TestRole>(response)).permissions.actions[0];
+    assert.equal(rule.action, 'possible_weapon');
+    assert.equal(rule.rule, 'allow');
+    assert.equal(rule.zoneId ?? null, null);
+  });
+
+  it('rejects a zone on the global possible_weapon action', async () => {
+    const zoneId = await createZone('Weapon Zone');
+    const response = await fetch(`${server.baseUrl}/api/roles/${guardRoleId}`, {
+      method: 'PATCH',
+      headers: jsonHeaders(adminCookie),
+      body: JSON.stringify({ permissions: { actions: [{ action: 'possible_weapon', zoneId, rule: 'allow' }] } }),
+    });
+    assert.equal(response.status, 400);
+    assert.match((await readJson<{ error: string }>(response)).error, /not scoped to a zone/i);
   });
 
   it('rejects a rule naming a zone that does not exist', async () => {

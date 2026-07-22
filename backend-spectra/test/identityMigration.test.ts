@@ -90,8 +90,8 @@ describe('role permission migration', () => {
     await migrate();
 
     const role = await readRole('legacy_exempt');
-    // possible_weapon isn't configurable through the API any more, so this
-    // permission could never be re-granted if the migration lost it.
+    // The migration preserves an existing exemption as an explicit global
+    // possible_weapon allow rule — the same shape the API now writes directly.
     assert.deepEqual(
       role.permissions.actions,
       [{ action: 'possible_weapon', zoneId: null, rule: 'allow' }],

@@ -4,7 +4,6 @@ export interface CameraRecord {
   id: string;
   name: string;
   location: string;
-  zone: string;
   sourceType: CameraSourceType;
   streamUrl: string | null;
   preferredDeviceId: string | null;
@@ -17,7 +16,6 @@ export interface CameraRecord {
 export interface NewCameraInput {
   name: string;
   location?: string;
-  zone?: string;
   sourceType: CameraSourceType;
   streamUrl?: string;
   preferredDeviceId?: string;

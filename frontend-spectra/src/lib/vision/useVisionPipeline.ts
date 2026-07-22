@@ -8,7 +8,7 @@ import {
   type CameraSource,
   type LocalDeviceSource,
 } from './cameraSource';
-import { liveCameraManager } from './liveCameraManager';
+import { liveCameraManager, type SharedDetection } from './liveCameraManager';
 import { VisionPipeline, type ModelLoadStatus, type PipelineAlert, type PipelineObservation, type VisionTickResult } from './pipeline';
 import type { ObserverZone } from './restrictedAreaObserver';
 import type { VisionSettings } from './types';
@@ -95,6 +95,12 @@ export function useVisionPipeline({
   const [modelStatus, setModelStatus] = useState<ModelLoadStatus>(IDLE_MODEL_STATUS);
   const [tickResult, setTickResult] = useState<VisionTickResult | null>(null);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
+  /**
+   * True when another view already owns detection for this shared camera, so
+   * this one renders the owner's published boxes instead of running a second
+   * pipeline (or, as it used to, showing no overlay at all).
+   */
+  const [mirroringDetection, setMirroringDetection] = useState(false);
 
   const cameraStateRef = useRef(cameraState);
   useEffect(() => {
@@ -111,6 +117,7 @@ export function useVisionPipeline({
   const stopLocalPipeline = useCallback(() => {
     pipelineRef.current?.stop();
     pipelineRef.current = null;
+    setMirroringDetection(false);
     setTickResult(null);
     setModelStatus(IDLE_MODEL_STATUS);
     setPipelineError(null);
@@ -134,13 +141,42 @@ export function useVisionPipeline({
     if (pipelineRef.current) return;
     const video = videoRef.current;
     if (!video) return;
-    if (persistent && !liveCameraManager.claimDetection(sessionKey, detectionToken.current)) return;
+    if (persistent && !liveCameraManager.claimDetection(sessionKey, detectionToken.current)) {
+      // Someone else is already detecting on this shared stream. Mirror their
+      // output rather than showing a bare video with no boxes — and keep
+      // retrying the claim on every manager notify, so this view takes over
+      // when the owner unmounts.
+      setMirroringDetection(true);
+      const published = liveCameraManager.getDetection(sessionKey);
+      if (published) {
+        setTickResult(published.tick);
+        setModelStatus(published.status);
+      }
+      return;
+    }
+    setMirroringDetection(false);
+
+    const token = detectionToken.current;
+    const publish = (next: Partial<SharedDetection>) => {
+      if (!persistent) return;
+      const current = liveCameraManager.getDetection(sessionKey);
+      liveCameraManager.publishDetection(sessionKey, token, {
+        tick: next.tick !== undefined ? next.tick : (current?.tick ?? null),
+        status: next.status !== undefined ? next.status : (current?.status ?? IDLE_MODEL_STATUS),
+      });
+    };
 
     const pipeline = new VisionPipeline(video, settingsRef.current, {
       onAlert: (alert) => onAlertRef.current(alert),
       onObservation: (observation) => onObservationRef.current?.(observation),
-      onTick: setTickResult,
-      onModelStatus: setModelStatus,
+      onTick: (tick) => {
+        setTickResult(tick);
+        publish({ tick });
+      },
+      onModelStatus: (status) => {
+        setModelStatus(status);
+        publish({ status });
+      },
       onError: (error) => setPipelineError(error.message),
     });
     pipeline.setRestrictedZones(restrictedZonesRef.current);
@@ -153,10 +189,21 @@ export function useVisionPipeline({
     pipelineRef.current?.stop();
     pipelineRef.current = null;
     if (persistent) liveCameraManager.releaseDetection(sessionKey, detectionToken.current);
+    setMirroringDetection(false);
     setTickResult(null);
     setModelStatus(IDLE_MODEL_STATUS);
     setPipelineError(null);
   }, [persistent, sessionKey]);
+
+  // Mirroring view: render whatever the detection owner publishes for this
+  // camera, and drop back to a clean overlay when it stops.
+  useEffect(() => {
+    if (!persistent || !mirroringDetection) return;
+    return liveCameraManager.subscribeDetection(sessionKey, (detection) => {
+      setTickResult(detection.tick);
+      setModelStatus(detection.status);
+    });
+  }, [persistent, mirroringDetection, sessionKey]);
 
   /** Attaches an already-open shared stream to our <video> — no getUserMedia. */
   const attachShared = useCallback(async () => {
@@ -282,6 +329,7 @@ export function useVisionPipeline({
         pipelineRef.current = null;
         if (video) video.srcObject = null;
         setCameraState('idle');
+        setMirroringDetection(false);
         setTickResult(null);
         setModelStatus(IDLE_MODEL_STATUS);
       }
@@ -293,6 +341,7 @@ export function useVisionPipeline({
       pipelineRef.current = null;
       liveCameraManager.releaseDetection(sessionKey, token);
       if (video) video.srcObject = null;
+      setMirroringDetection(false);
       setTickResult(null);
       setModelStatus(IDLE_MODEL_STATUS);
       setPipelineError(null);
@@ -305,6 +354,7 @@ export function useVisionPipeline({
   useEffect(() => {
     if (cameraState !== 'active') return;
     if (detectionEnabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- spinning the pipeline up (or falling back to mirroring another view's) synchronizes the external vision system with React state, not a derived value
       startDetection();
     } else {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- tearing the pipeline down when detection is toggled off is synchronizing the external vision system with React state, not a derived value

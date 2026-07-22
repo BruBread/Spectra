@@ -22,7 +22,6 @@ export async function streamUrlInUse(streamUrl: string, excludeId?: string): Pro
 interface CreateCameraInput {
   name: string;
   location?: string;
-  zone?: string;
   sourceType: CameraSourceType;
   streamUrl?: string;
   preferredDeviceId?: string;

@@ -1,15 +1,36 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .headerRow {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  align-items: center;
+  gap: 14px;
   flex-wrap: wrap;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.backLink:hover {
+  color: var(--color-text);
+  background: var(--color-surface-muted);
+}
+
+.headerTitles {
+  min-width: 0;
 }
 
 .title {
@@ -19,14 +40,10 @@
 }
 
 .subtitle {
-  margin-top: 4px;
-  font-size: 0.875rem;
+  margin-top: 2px;
+  font-size: 0.8125rem;
   color: var(--color-text-secondary);
-  max-width: 70ch;
-}
-
-.cameraSelect {
-  min-width: 240px;
+  max-width: 80ch;
 }
 
 .banner {
@@ -58,15 +75,73 @@
   margin-top: 1px;
 }
 
+/* The viewer proper: the feed takes ~68% of the width and is height-bound to
+   the viewport so it dominates the screen, with recent notifications alongside
+   in the remaining ~32%. Everything else (the disclaimer, detection settings)
+   sits below the fold. */
 .liveGrid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr;
+  grid-template-columns: minmax(0, 68fr) minmax(0, 32fr);
   gap: 16px;
-  align-items: start;
+  height: calc(100vh - 210px);
+  min-height: 440px;
+}
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(10, 13, 20, 0.55);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.arrow:hover {
+  background: rgba(10, 13, 20, 0.8);
+}
+
+.arrow:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.arrowLeft {
+  left: 12px;
+}
+
+.arrowRight {
+  right: 12px;
+}
+
+.stageLabel {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  max-width: 70%;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(10, 13, 20, 0.6);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(6px);
 }
 
 @media (max-width: 960px) {
   .liveGrid {
     grid-template-columns: 1fr;
+    height: auto;
   }
 }

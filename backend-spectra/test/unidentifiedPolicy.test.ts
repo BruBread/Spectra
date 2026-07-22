@@ -155,10 +155,17 @@ describe('unidentified-person policy: rules', () => {
   });
 
   it('refuses a rule for an action nobody may configure', async () => {
-    for (const action of ['possible_weapon', 'unattended_object']) {
+    for (const action of ['unattended_object']) {
       const { status } = await putRules([{ action, zoneId: null, rule: 'allow' }]);
       assert.equal(status, 400, `${action} must not be configurable here either`);
     }
+  });
+
+  it('accepts a global possible_weapon rule — waving through unidentified holders is a real, if drastic, choice', async () => {
+    const { status, policy } = await putRules([{ action: 'possible_weapon', zoneId: null, rule: 'allow' }]);
+    assert.equal(status, 200);
+    assert.equal(policy.rules[0].action, 'possible_weapon');
+    assert.equal(policy.rules[0].rule, 'allow');
   });
 
   it('refuses malformed rules on exactly the same terms as a role', async () => {

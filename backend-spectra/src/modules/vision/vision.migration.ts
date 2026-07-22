@@ -1,6 +1,11 @@
 import { VisionAlert, VisionSettings } from './vision.model.js';
 import { DETECTION_TYPES, RETIRED_DETECTION_TYPES, defaultSeverityForType } from './vision.types.js';
 
+// Types a legacy status-less alert row could carry. `weapon` was a
+// client-postable type before it became server-only, so any alert recorded then
+// still needs its lifecycle fields backfilled with a sensible default severity.
+const BACKFILL_TYPES = [...DETECTION_TYPES, 'weapon'] as const;
+
 /**
  * Backfills alerts written before the notification lifecycle existed
  * (severity/status/read/zoneName/occurrences/lastOccurredAt).
@@ -19,7 +24,7 @@ export async function backfillAlertLifecycleFields(): Promise<number> {
   if (pending === 0) return 0;
 
   const result = await VisionAlert.bulkWrite(
-    DETECTION_TYPES.map((type) => ({
+    BACKFILL_TYPES.map((type) => ({
       updateMany: {
         filter: { status: { $exists: false }, type },
         update: [

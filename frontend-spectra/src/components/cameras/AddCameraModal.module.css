@@ -4,12 +4,6 @@
   gap: 16px;
 }
 
-.fieldRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
 .actions {
   display: flex;
   justify-content: flex-end;
@@ -98,11 +92,5 @@
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-@media (max-width: 480px) {
-  .fieldRow {
-    grid-template-columns: 1fr;
   }
 }

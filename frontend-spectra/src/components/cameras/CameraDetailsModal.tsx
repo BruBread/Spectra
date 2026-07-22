@@ -1,4 +1,4 @@
-import { ExternalLink, MapPin } from 'lucide-react';
+import { Maximize2, MapPin } from 'lucide-react';
 import type { CameraRecord } from '../../lib/cameras/types';
 import { CAMERA_SOURCE_LABELS, supportsDetection } from '../../lib/cameras/types';
 import { Modal } from '../ui/Modal';
@@ -31,10 +31,6 @@ export function CameraDetailsModal({ camera, onClose, onRemove, onToggleDetectio
             <dd>{CAMERA_SOURCE_LABELS[camera.sourceType]}</dd>
           </div>
           <div>
-            <dt>Zone</dt>
-            <dd>{camera.zone || '—'}</dd>
-          </div>
-          <div>
             <dt>Location</dt>
             <dd className={styles.withIcon}>
               <MapPin size={13} aria-hidden="true" /> {camera.location || '—'}
@@ -65,7 +61,7 @@ export function CameraDetailsModal({ camera, onClose, onRemove, onToggleDetectio
           <div className={styles.detectionRow}>
             <Switch
               label="AI Detection"
-              description="Runs the same detection pipeline as Live Monitor, scoped to this camera."
+              description="Runs the same detection pipeline as the live viewer, scoped to this camera."
               checked={camera.detectionEnabled}
               onChange={(checked) => onToggleDetection(camera.id, checked)}
             />
@@ -82,7 +78,7 @@ export function CameraDetailsModal({ camera, onClose, onRemove, onToggleDetectio
           </Button>
           {detectionCapable && camera.detectionEnabled ? (
             <ButtonLink href={`/monitor?camera=${camera.id}`} variant="primary" size="sm">
-              <ExternalLink size={14} aria-hidden="true" /> Open in Live Monitor
+              <Maximize2 size={14} aria-hidden="true" /> View Live Monitor
             </ButtonLink>
           ) : null}
         </div>

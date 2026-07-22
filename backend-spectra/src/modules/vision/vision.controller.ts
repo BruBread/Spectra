@@ -155,9 +155,12 @@ export async function createAlert(req: Request, res: Response, next: NextFunctio
       const policy = (POLICY_ALERT_TYPES as string[]).includes(String(type));
       const silent = (SILENT_DETECTION_TYPES as string[]).includes(String(type));
       const retired = (ALL_DETECTION_TYPES as string[]).includes(String(type));
+      // Each server-only type has its own observation endpoint the client posts
+      // to instead; naming it makes an out-of-date client easy to fix.
+      const observationEndpoint = type === 'weapon' ? '/api/vision/weapon-observations' : '/api/vision/observations';
       res.status(400).json({
         error: policy
-          ? `Detection type "${type}" is created by server-side policy enforcement, not by clients. Post a camera observation to /api/vision/observations and the server decides whether to alert. Client-postable types: ${DETECTION_TYPES.join(', ')}`
+          ? `Detection type "${type}" is created by server-side policy enforcement, not by clients. Post a camera observation to ${observationEndpoint} and the server decides whether to alert. Client-postable types: ${DETECTION_TYPES.join(', ')}`
           : silent
             ? `Detection type "${type}" is a silent identity capability and no longer creates alerts. It is read as a credential by policy evaluation instead. Alerting types: ${DETECTION_TYPES.join(', ')}`
             : retired

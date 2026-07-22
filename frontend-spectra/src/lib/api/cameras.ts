@@ -7,7 +7,6 @@ function normalizeCamera(raw: Record<string, unknown>): CameraRecord {
     id: String(raw._id ?? raw.id),
     name: String(raw.name),
     location: String(raw.location ?? ''),
-    zone: String(raw.zone ?? ''),
     sourceType: raw.sourceType as CameraRecord['sourceType'],
     streamUrl: (raw.streamUrl as string | null) ?? null,
     preferredDeviceId: (raw.preferredDeviceId as string | null) ?? null,

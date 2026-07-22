@@ -20,7 +20,6 @@ interface AddCameraModalProps {
   existingStreamUrls: string[];
 }
 
-const ZONES = ['Zone A', 'Zone B', 'Zone C', 'Zone D'];
 // MJPEG removed from the add flow: it renders via <img> and can't feed the AI
 // detection pipeline, so only detection-capable sources are offered here.
 const SOURCE_TYPES: CameraSourceType[] = ['local-device', 'hls-stream'];
@@ -30,7 +29,6 @@ type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
 export function AddCameraModal({ open, onClose, onSubmit, existingStreamUrls }: AddCameraModalProps) {
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
-  const [zone, setZone] = useState(ZONES[0]);
   const [sourceType, setSourceType] = useState<CameraSourceType>('local-device');
   const [streamUrl, setStreamUrl] = useState('');
   const [errors, setErrors] = useState<{ name?: string; streamUrl?: string }>({});
@@ -47,7 +45,6 @@ export function AddCameraModal({ open, onClose, onSubmit, existingStreamUrls }: 
   const reset = () => {
     setName('');
     setLocation('');
-    setZone(ZONES[0]);
     setSourceType('local-device');
     setStreamUrl('');
     setErrors({});
@@ -170,7 +167,6 @@ export function AddCameraModal({ open, onClose, onSubmit, existingStreamUrls }: 
       const created = await onSubmit({
         name: name.trim(),
         location: location.trim(),
-        zone,
         sourceType,
         streamUrl: sourceType === 'local-device' ? undefined : trimmedUrl,
         preferredDeviceId: sourceType === 'local-device' ? selectedDeviceId || undefined : undefined,
@@ -202,16 +198,7 @@ export function AddCameraModal({ open, onClose, onSubmit, existingStreamUrls }: 
     >
       <form className={styles.form} onSubmit={handleSubmit}>
         <Input label="Camera name" placeholder="e.g. West Stairwell" value={name} onChange={(event) => setName(event.target.value)} error={errors.name} />
-        <div className={styles.fieldRow}>
-          <Input label="Location (optional)" placeholder="e.g. Engineering Building, 3rd Floor" value={location} onChange={(event) => setLocation(event.target.value)} />
-          <Select label="Zone" value={zone} onChange={(event) => setZone(event.target.value)}>
-            {ZONES.map((z) => (
-              <option key={z} value={z}>
-                {z}
-              </option>
-            ))}
-          </Select>
-        </div>
+        <Input label="Location (optional)" placeholder="e.g. Engineering Building, 3rd Floor" value={location} onChange={(event) => setLocation(event.target.value)} />
 
         <Select
           label="Source type"

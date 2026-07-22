@@ -77,12 +77,15 @@ export const ACTION_CATALOG: readonly ActionDefinition[] = Object.freeze([
     key: 'possible_weapon',
     label: 'Possible weapon',
     description:
-      'A possible weapon is visible. No detector exists: the current camera and object model cannot reliably detect firearms, and nothing here claims otherwise.',
+      'A possible weapon is held by a person. The browser proposes candidate boxes; the server resolves the holder from their AprilTag and applies this rule. It flags possibilities for a human to review and never confirms a weapon. An allowed rule requires a readable, registered AprilTag identifying the holder; anyone the camera cannot identify is treated by the unidentified-person policy and alerts.',
     scope: 'global',
-    detector: 'planned',
-    configurable: false,
-    unconfigurableReason: 'Not active yet — no weapon detection exists, so a rule would have nothing to apply to.',
-    policyEnforced: false,
+    // Live and enforced as of weapon Phase 3C: a confirmed candidate is
+    // evaluated server-side (weapon.service) against the holder's role and the
+    // unidentified-person policy — an allowed guard is suppressed and audited,
+    // everyone else raises a critical alert.
+    detector: 'live',
+    configurable: true,
+    policyEnforced: true,
     requiresSnapshot: true,
     defaultSeverity: 'critical',
   },

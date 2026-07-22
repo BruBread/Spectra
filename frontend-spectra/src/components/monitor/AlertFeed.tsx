@@ -18,16 +18,19 @@ interface AlertFeedProps {
   alerts: FeedAlert[];
   onAcknowledge: (id: string) => void;
   onAcknowledgeAll: () => void;
+  /** Fill the container's height and scroll the list inside it (the viewer's side column). */
+  fill?: boolean;
+  title?: string;
 }
 
-export function AlertFeed({ alerts, onAcknowledge, onAcknowledgeAll }: AlertFeedProps) {
+export function AlertFeed({ alerts, onAcknowledge, onAcknowledgeAll, fill, title = 'Live Alerts' }: AlertFeedProps) {
   const [selected, setSelected] = useState<VisionAlert | null>(null);
   const unacknowledgedCount = alerts.filter((alert) => !alert.acknowledged).length;
 
   return (
-    <Card>
+    <Card className={fill ? styles.fillCard : undefined}>
       <CardHeader
-        title="Live Alerts"
+        title={title}
         subtitle={`${unacknowledgedCount} needing review`}
         action={
           unacknowledgedCount > 0 ? (
@@ -44,7 +47,7 @@ export function AlertFeed({ alerts, onAcknowledge, onAcknowledgeAll }: AlertFeed
           description="Start the camera to begin monitoring — alerts will appear here in real time."
         />
       ) : (
-        <ul className={styles.list}>
+        <ul className={fill ? `${styles.list} ${styles.listFill}` : styles.list}>
           {alerts.map((alert) => (
             <AlertCard
               key={alert.id}

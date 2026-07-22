@@ -57,7 +57,7 @@ function drawDetections(canvas: HTMLCanvasElement | null, tick: VisionTickResult
     ctx.fillText(`${object.objectClass} ${(object.score * 100).toFixed(0)}%`, mx + 4, y + 14);
   }
 
-  // Live weapon boxes (thin orange): what the YOLOX model sees this frame,
+  // Live weapon boxes (thin orange): what the weapon model sees this frame,
   // before the detector's veto/duration gate. A thick red box below means an
   // alert actually fired; these just show the model is watching.
   ctx.lineWidth = 2;

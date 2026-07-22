@@ -55,7 +55,8 @@ export function findPolicyDecisionById(id: string) {
  */
 export function findRecentEpisodeDecision(params: {
   cameraId: string;
-  zoneId: string;
+  /** Null for a global (zoneless) action like possible_weapon. */
+  zoneId: string | null;
   trackId: string;
   since: Date;
 }) {

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MapPin, MoreVertical, Trash2, Eye, Radio, ExternalLink } from 'lucide-react';
+import { MapPin, MoreVertical, Trash2, Eye, Radio, Maximize2 } from 'lucide-react';
 import type { CameraRecord } from '../../lib/cameras/types';
 import { CAMERA_SOURCE_LABELS, supportsDetection } from '../../lib/cameras/types';
 import type { PipelineAlert } from '../../lib/vision/pipeline';
@@ -94,7 +94,7 @@ export function CameraCard({ camera, onView, onRemove, onToggleDetection, onAler
           <span className={styles.sourceType}>{CAMERA_SOURCE_LABELS[camera.sourceType]}</span>
           {detectionCapable && camera.detectionEnabled ? (
             <Link href={`/monitor?camera=${camera.id}`} className={styles.monitorLink}>
-              <ExternalLink size={12} aria-hidden="true" /> Live Monitor
+              <Maximize2 size={12} aria-hidden="true" /> Live Monitor
             </Link>
           ) : null}
         </div>

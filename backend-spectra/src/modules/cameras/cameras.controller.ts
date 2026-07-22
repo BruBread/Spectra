@@ -17,7 +17,7 @@ export async function listCameras(_req: Request, res: Response, next: NextFuncti
 
 export async function createCamera(req: Request, res: Response, next: NextFunction) {
   try {
-    const { name, location, zone, sourceType, streamUrl, preferredDeviceId, preferredDeviceLabel } = req.body;
+    const { name, location, sourceType, streamUrl, preferredDeviceId, preferredDeviceLabel } = req.body;
 
     if (!name || !isSourceType(sourceType)) {
       res.status(400).json({ error: 'name and a valid sourceType are required' });
@@ -38,7 +38,6 @@ export async function createCamera(req: Request, res: Response, next: NextFuncti
       {
         name,
         location,
-        zone,
         sourceType,
         streamUrl,
         preferredDeviceId,
@@ -59,7 +58,6 @@ export async function createCamera(req: Request, res: Response, next: NextFuncti
 const UPDATABLE_CAMERA_FIELDS = [
   'name',
   'location',
-  'zone',
   'sourceType',
   'streamUrl',
   'preferredDeviceId',

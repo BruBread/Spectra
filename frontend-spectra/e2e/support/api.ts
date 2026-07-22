@@ -38,7 +38,7 @@ export async function apiAsAdmin(): Promise<APIRequestContext> {
  */
 export async function seedCamera(api: APIRequestContext, name = 'E2E Test Camera'): Promise<string> {
   const response = await api.post('/api/cameras', {
-    data: { name, location: 'E2E Test Location', zone: 'E2E Zone', sourceType: 'local-device' },
+    data: { name, location: 'E2E Test Location', sourceType: 'local-device' },
   });
   if (!response.ok()) {
     throw new Error(`seeding camera failed: ${response.status()} ${await response.text()}`);

@@ -226,7 +226,7 @@ export const DETECTION_DESCRIPTIONS: Record<DetectorConfigType, string> = {
 
 /**
  * What each detector needs computed each tick. Weapon detection needs its own
- * YOLOX output *and* the COCO-SSD object boxes — the object model is what vetoes
+ * YOLO11 output *and* the COCO-SSD object boxes — the object model is what vetoes
  * phone/remote look-alikes, so both must run when weapon detection is on.
  */
 export const DETECTION_REQUIREMENTS: Record<DetectorConfigType, DetectionRequirement[]> = {

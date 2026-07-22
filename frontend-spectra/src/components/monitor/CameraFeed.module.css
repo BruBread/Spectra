@@ -13,6 +13,21 @@
   background: #0a0d16;
 }
 
+/* Fill mode (the full-screen viewer): the stage takes whatever height the
+   container gives it rather than holding a 4:3 box, so the feed is as large as
+   the viewport allows. The video already uses object-fit: cover, so it stays
+   filled and cropped — "zoomed" — at any aspect ratio. */
+.wrapperFill {
+  height: 100%;
+  min-height: 0;
+}
+
+.stageFill {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
 .video {
   position: absolute;
   inset: 0;

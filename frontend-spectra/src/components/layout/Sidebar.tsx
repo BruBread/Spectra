@@ -3,16 +3,18 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { Bell, Camera, Home, LogOut, ScrollText, Settings, ShieldCheck, Users, Video, X } from 'lucide-react';
+import { Bell, Camera, Home, LogOut, ScrollText, Settings, ShieldCheck, Users, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/format';
 import { SpectraLogo } from '../ui/SpectraLogo';
 import styles from './Sidebar.module.css';
 
+// Live Monitor is deliberately absent: it's no longer a destination of its own,
+// it's the full-screen viewer you reach from a specific camera (Cameras → a
+// camera → View Live Monitor, or a notification's "Open in Live Monitor").
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/cameras', label: 'Cameras', icon: Camera },
-  { href: '/monitor', label: 'Live Monitor', icon: Video },
   { href: '/notifications', label: 'Notifications', icon: Bell },
   { href: '/access-control', label: 'Access Control', icon: ShieldCheck },
   { href: '/logs', label: 'Logs', icon: ScrollText },

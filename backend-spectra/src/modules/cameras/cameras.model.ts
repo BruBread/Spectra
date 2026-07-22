@@ -5,7 +5,6 @@ const cameraSchema = new Schema(
   {
     name: { type: String, required: true },
     location: { type: String, default: '' },
-    zone: { type: String, default: '' },
     sourceType: { type: String, enum: CAMERA_SOURCE_TYPES, required: true },
     // hls-stream / mjpeg-stream
     streamUrl: { type: String, default: null },

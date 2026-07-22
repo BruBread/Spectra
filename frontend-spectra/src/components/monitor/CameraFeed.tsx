@@ -1,13 +1,20 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { AlertTriangle, Camera, CameraOff, Loader2, Video } from 'lucide-react';
 import type { useVisionPipeline } from '../../lib/vision/useVisionPipeline';
 import { DetectionOverlay } from '../vision/DetectionOverlay';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
+import { cn } from '../../lib/format';
 import styles from './CameraFeed.module.css';
 
-type CameraFeedProps = ReturnType<typeof useVisionPipeline>;
+type CameraFeedProps = ReturnType<typeof useVisionPipeline> & {
+  /** Stretch the stage to fill its container instead of holding a 4:3 box. */
+  fill?: boolean;
+  /** Rendered on top of the stage — the viewer puts its camera-rotation arrows here. */
+  stageOverlay?: ReactNode;
+};
 
 const REASON_HINTS: Record<string, string> = {
   'permission-denied': 'Open your browser’s site settings and allow camera access for this page, then try again.',
@@ -17,12 +24,23 @@ const REASON_HINTS: Record<string, string> = {
   unknown: 'Reload the page and try again.',
 };
 
-export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, tickResult, pipelineError, start, stop }: CameraFeedProps) {
+export function CameraFeed({
+  videoRef,
+  cameraState,
+  cameraError,
+  modelStatus,
+  tickResult,
+  pipelineError,
+  start,
+  stop,
+  fill,
+  stageOverlay,
+}: CameraFeedProps) {
   const modelsLoading = modelStatus.objects === 'loading' || modelStatus.apriltag === 'loading';
 
   return (
-    <div className={styles.wrapper}>
-      <div className={styles.stage} data-active={cameraState === 'active'}>
+    <div className={cn(styles.wrapper, fill && styles.wrapperFill)}>
+      <div className={cn(styles.stage, fill && styles.stageFill)} data-active={cameraState === 'active'}>
         <video ref={videoRef} className={styles.video} muted playsInline />
         <DetectionOverlay tick={tickResult} mirrored className={styles.overlay} />
 
@@ -63,6 +81,8 @@ export function CameraFeed({ videoRef, cameraState, cameraError, modelStatus, ti
             Loading AI models&hellip; this can take a few seconds the first time.
           </div>
         ) : null}
+
+        {stageOverlay}
       </div>
 
       {pipelineError ? (

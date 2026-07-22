@@ -1,21 +1,29 @@
 /** Detection types a client's browser pipeline may post directly to POST /api/vision/alerts. */
-export type DetectionType = 'unattended_object' | 'weapon';
+export type DetectionType = 'unattended_object';
 
-export const DETECTION_TYPES: DetectionType[] = ['unattended_object', 'weapon'];
+export const DETECTION_TYPES: DetectionType[] = ['unattended_object'];
 
 /**
  * Alerting types the backend creates itself and a client may never post.
  *
- * `restricted_area` is the product of server-side policy enforcement over a
- * camera observation: identity resolution, the per-zone rule and suppression
- * all happen in restrictedArea.service. Letting a browser POST one to
- * /api/vision/alerts would be a bypass of exactly that evaluation, so it is a
- * valid *stored* type but not a client-creatable one — the alerts controller
- * rejects it.
+ * Both are the product of server-side policy enforcement over a camera
+ * observation — identity resolution from AprilTags, the applicable rule, and
+ * suppress-or-alert all happen in the policy services, never in the browser:
+ * - `restricted_area` — a person entering a named zone (restrictedArea.service).
+ * - `weapon` — a possible weapon on a holder (weapon.service). The catalog action
+ *   key is `possible_weapon`; the alert `type` stays `weapon` so the detector
+ *   settings and notification UI keep their existing name.
+ *
+ * Letting a browser POST either to /api/vision/alerts would bypass exactly that
+ * evaluation, so they are valid *stored* types but not client-creatable ones —
+ * the alerts controller rejects them and points the client at the observation
+ * endpoint instead. `weapon` remains a DetectorConfigType below: the browser
+ * still runs the weapon model and reads its per-camera settings; it just posts
+ * a weapon *observation* rather than a finished alert.
  */
-export type PolicyAlertType = 'restricted_area';
+export type PolicyAlertType = 'restricted_area' | 'weapon';
 
-export const POLICY_ALERT_TYPES: PolicyAlertType[] = ['restricted_area'];
+export const POLICY_ALERT_TYPES: PolicyAlertType[] = ['restricted_area', 'weapon'];
 
 /**
  * Capabilities the pipeline runs every tick that never produce an alert.
@@ -29,10 +37,15 @@ export type SilentDetectionType = 'apriltag';
 
 export const SILENT_DETECTION_TYPES: SilentDetectionType[] = ['apriltag'];
 
-/** What a camera's detector settings may configure: alerting types plus silent capabilities. */
-export type DetectorConfigType = DetectionType | SilentDetectionType;
+/**
+ * What a camera's detector settings may configure: every capability the browser
+ * runs each tick, whichever way its result reaches the feed. `weapon` is here
+ * even though its alert is server-only (see PolicyAlertType) — the browser still
+ * runs the weapon model and reads its threshold/cooldown from these settings.
+ */
+export type DetectorConfigType = DetectionType | 'weapon' | SilentDetectionType;
 
-export const DETECTOR_CONFIG_TYPES: DetectorConfigType[] = [...DETECTION_TYPES, ...SILENT_DETECTION_TYPES];
+export const DETECTOR_CONFIG_TYPES: DetectorConfigType[] = [...DETECTION_TYPES, 'weapon', ...SILENT_DETECTION_TYPES];
 
 /**
  * Types that were removed from the product.
@@ -79,19 +92,20 @@ export const ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under_revi
 /** Statuses where a human still has the alert on their plate. */
 export const OPEN_ALERT_STATUSES: AlertStatus[] = ['new', 'acknowledged', 'under_review'];
 
-const SEVERITY_BY_TYPE: Record<DetectionType, AlertSeverity> = {
+const SEVERITY_BY_TYPE: Partial<Record<DetectorConfigType | PolicyAlertType, AlertSeverity>> = {
   unattended_object: 'warning',
   weapon: 'critical',
+  restricted_area: 'warning',
 };
 
 /**
- * Severity a detection gets when the client doesn't send one.
+ * Severity a detection gets when no explicit severity is supplied.
  *
- * Only active types need an entry: this runs when an alert is created, and a
- * retired type can no longer be created. Alerts already stored keep the
- * severity recorded on the row itself.
+ * Client alerts fall back to this; policy-created alerts pass the catalog's
+ * severity explicitly. Only active types need an entry — a retired type can no
+ * longer be created, and stored alerts keep the severity on the row itself.
  */
-export function defaultSeverityForType(type: DetectionType): AlertSeverity {
+export function defaultSeverityForType(type: DetectorConfigType | PolicyAlertType): AlertSeverity {
   return SEVERITY_BY_TYPE[type] ?? 'warning';
 }
 
@@ -123,10 +137,12 @@ export interface DetectionTypeConfig {
 
 const BASE_DETECTORS: DetectionTypeConfig[] = [
   { type: 'unattended_object', enabled: true, confidenceThreshold: 0.6, cooldownSeconds: 60, durationThresholdSeconds: 30, zone: null },
-  // Weapon detection runs an on-device YOLOX model. confidenceThreshold 0.45
-  // matched 0% false-positives / 96% recall in Phase-0 eval; durationThreshold 1
-  // is a light debounce (a weapon must persist ~1s) until the Phase-2 temporal
-  // gate lands. Enabled by default — a security console watches for this.
+  // Weapon detection runs an on-device YOLO11 model. confidenceThreshold 0.45
+  // is a starting point — it must be re-tuned on the locked validation set for
+  // every newly trained model, since scores are not comparable across models.
+  // durationThreshold 1 is the continuous-hold debounce that runs on top of the
+  // N-of-M confirmation gate. Enabled by default — a security console watches
+  // for this.
   { type: 'weapon', enabled: true, confidenceThreshold: 0.45, cooldownSeconds: 30, durationThresholdSeconds: 1, zone: null },
   // AprilTag stays enabled and tunable: confidenceThreshold controls decode
   // strictness. It produces no alerts — cooldown and duration are inert for it

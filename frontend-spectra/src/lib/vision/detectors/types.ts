@@ -19,7 +19,7 @@ export interface DetectorFrameInput {
   videoWidth: number;
   videoHeight: number;
   objects: DetectedObjectBox[];
-  /** YOLOX weapon boxes for this frame — empty unless weapon detection is on. */
+  /** YOLO11 weapon boxes for this frame — empty unless weapon detection is on. */
   weapons: DetectedWeaponBox[];
   aprilTags: DetectedAprilTag[];
   /** Multiply AprilTag corner coords by this to map them into video pixel coordinates. */

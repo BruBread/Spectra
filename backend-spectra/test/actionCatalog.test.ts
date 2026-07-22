@@ -81,12 +81,15 @@ describe('action catalog: the rules of the catalog itself', () => {
     assert.match(unattended.unconfigurableReason!, /ownership cannot be established/i);
   });
 
-  it('marks possible_weapon as having no detector, and claims nothing about firearms', () => {
+  it('marks possible_weapon as live and enforced, and never confirms a weapon', () => {
     const weapon = ACTION_CATALOG.find((action) => action.key === 'possible_weapon')!;
-    assert.equal(weapon.detector, 'planned');
-    assert.equal(weapon.configurable, false);
-    assert.equal(weapon.policyEnforced, false);
-    assert.match(weapon.description, /cannot reliably detect firearms/i);
+    assert.equal(weapon.detector, 'live');
+    assert.equal(weapon.configurable, true);
+    assert.equal(weapon.policyEnforced, true);
+    assert.equal(weapon.scope, 'global');
+    assert.equal(weapon.defaultSeverity, 'critical');
+    // The candidate framing is load-bearing: it must never claim confirmation.
+    assert.match(weapon.description, /never confirms a weapon/i);
   });
 
   it('has restricted_area live and enforced', () => {

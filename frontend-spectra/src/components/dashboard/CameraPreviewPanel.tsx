@@ -47,7 +47,6 @@ export function CameraPreviewPanel({ cameras }: { cameras: CameraRecord[] }) {
               <p className={styles.name}>{camera.name}</p>
               <p className={styles.location}>
                 <MapPin size={12} aria-hidden="true" /> {camera.location || CAMERA_SOURCE_LABELS[camera.sourceType]}
-                {camera.zone ? ` · ${camera.zone}` : ''}
               </p>
             </div>
           </div>

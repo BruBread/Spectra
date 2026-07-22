@@ -4,6 +4,8 @@ Monorepo containing the Spectra web frontend and backend API. The existing
 iOS app (Swift, built separately) consumes the backend API and is not part
 of this repo.
 
+Licensed under **AGPL-3.0** — see [License](#license).
+
 ## Stack
 
 - **frontend-spectra** — Next.js (App Router) + React + TypeScript
@@ -283,9 +285,13 @@ reads the environment once at import.
 Backend foundation for the MVP's identity model. **`restricted_area` is now
 enforced** — a camera observation of a person entering a restricted zone is
 evaluated server-side and either alerts or is suppressed and audited (see
-[Restricted-area enforcement](#restricted-area-enforcement)). The other actions
-remain configuration-only: `possible_weapon` has no detector and
-`unattended_object` has no role exemption.
+[Restricted-area enforcement](#restricted-area-enforcement)). **`possible_weapon`
+is now enforced the same way** — a browser reports a possible weapon and its
+holder, and the server resolves the holder's identity from their AprilTag and
+applies the global rule: an allowed role (a security guard) is suppressed and
+audited, everyone else raises a critical alert (see
+[Possible-weapon enforcement](#possible-weapon-enforcement)). `unattended_object`
+has no role exemption.
 
 All routes need a session. Reads are open to `admin` and `operator`; **every
 mutation is `admin`-only**, matching the camera and vision routes.
@@ -304,7 +310,7 @@ otherwise (`DEFAULT_RULE`).
 | Action | Scope | Detector | Configurable | Enforced |
 |---|---|---|---|---|
 | `restricted_area` | per zone | **live** | **yes** | **yes** |
-| `possible_weapon` | global | planned | no — *"Not active yet"* | no |
+| `possible_weapon` | global | **live** | **yes** | **yes** |
 | `unattended_object` | global | live | no — always alerts | no |
 
 `detector`, `configurable` and `policyEnforced` are three separate fields
@@ -315,9 +321,12 @@ console reflects the change automatically.
 
 `unattended_object` has **no role exemption, by design**. Once the person who
 left an object walks away, ownership can't be established from a frame, so no
-role can be trusted to excuse it. `possible_weapon` has no detector: the
-current camera and object model cannot reliably detect firearms, and nothing
-here claims otherwise.
+role can be trusted to excuse it. `possible_weapon` proposes candidates only —
+the alert always says *possible*, a human always reviews, and nothing here
+claims a weapon is confirmed. It **is** configurable and enforced: a role may be
+granted a global allow (the security-guard exemption), and identity for that
+exemption comes from an AprilTag alone — see
+[Possible-weapon enforcement](#possible-weapon-enforcement).
 
 ### Roles
 
@@ -521,6 +530,51 @@ Only then does policy run, **entirely server-side**:
 Thresholds live on `VisionSettings.restrictedArea` (per camera). `restricted_area`
 is a **server-only alert type**: `POST /api/vision/alerts` rejects it, so a
 client cannot fabricate one and skip evaluation.
+
+### Possible-weapon enforcement
+
+`POST /api/vision/weapon-observations` is the weapon equivalent of the
+restricted-area path, and works the same way: **the browser sends CV facts only;
+the server makes every decision.** The browser runs the on-device YOLO11 weapon
+model, applies its own veto / holder / N-of-M gates, and posts the surviving
+box, the person holding it, that person's decoded AprilTag numbers, the model
+confidence, and a snapshot. It never sends identity, a rule, or an outcome.
+
+```jsonc
+{
+  "cameraId": "…", "trackId": "…",
+  "frame": { "width": 1000, "height": 1000 },
+  "weaponBox": [x, y, w, h],   // video pixels
+  "personBox": [x, y, w, h],   // the holder, video pixels
+  "confidence": 0.9,
+  "framesConfirmed": 3,        // the browser's N-of-M count
+  "aprilTags": [7],            // raw tag numbers on the holder, never resolved client-side
+  "snapshot": "data:image/jpeg;base64,…"
+}
+```
+
+`possible_weapon` is a **global** action (no zone). The server re-derives what it
+can — the confidence floor, the confirmation count, and that the weapon box is
+actually held (from the two boxes) — then resolves the holder's identity **from
+AprilTags alone** and applies the global rule:
+
+1. An `allow` rule for the holder's role — the **security-guard exemption** —
+   suppresses the alert and writes a `PolicyDecision`, exactly like a suppressed
+   restricted-area entry. A permitted carry is audited, not silent.
+2. Anyone unidentified (no readable tag — a nearby LoRa wristband is **not** a
+   credential), or with no `allow` rule, raises a **critical `weapon` alert**
+   with its snapshot and full provenance.
+
+**Honest limitation.** Unlike restricted-area geometry, the *presence* of a
+weapon is a model inference the browser makes and the server cannot re-derive —
+there is no model server-side. The server owns identity and policy; it trusts
+the browser that a weapon was detected. The system fails toward safety: if the
+guard's tag isn't readable at that moment, they are unidentified and it alerts.
+
+`weapon` is a **server-only alert type**: `POST /api/vision/alerts` rejects it
+(pointing the client at `/weapon-observations`), so a client cannot fabricate a
+weapon alert and skip the exemption check. The catalog action key is
+`possible_weapon`; the alert `type` stays `weapon`.
 
 ## Access Control (admin UI)
 
@@ -761,7 +815,7 @@ authenticated session. Reading and triaging alerts is open to `operator` and
 |---|---|
 | `_id` | Alert id |
 | `cameraId` | Camera the detection came from |
-| `type` | `unattended_object` (client-posted), or `restricted_area` (server-only, from policy enforcement). Alerts recorded before the pose-based detectors were removed, or before AprilTag went silent, may also carry those types — see [Retired and silent detection types](#retired-and-silent-detection-types) |
+| `type` | `unattended_object` (client-posted), or `restricted_area` / `weapon` (server-only, from policy enforcement). Alerts recorded before the pose-based detectors were removed, or before AprilTag went silent, may also carry those types — see [Retired and silent detection types](#retired-and-silent-detection-types) |
 | `severity` | `info` \| `warning` \| `critical` |
 | `status` | `new` \| `acknowledged` \| `under_review` \| `resolved` \| `dismissed` |
 | `read` | Read/unread state for notification badges |
@@ -824,8 +878,9 @@ npm run purge:retired-alerts -- --confirm # actually delete
 |---|---|---|
 | `GET` | `/alerts` | List alerts, newest first |
 | `GET` | `/alerts/counts` | `{ unread, criticalOpen, new }` totals for badges |
-| `POST` | `/alerts` | Create an alert (`201`), or group a repeat (`200`). Rejects `restricted_area` — that type is server-only, see [enforcement](#restricted-area-enforcement) |
+| `POST` | `/alerts` | Create an alert (`201`), or group a repeat (`200`). Rejects `restricted_area` and `weapon` — those types are server-only, see [restricted-area](#restricted-area-enforcement) and [possible-weapon](#possible-weapon-enforcement) enforcement |
 | `POST` | `/observations` | Report a restricted-zone entry for server-side evaluation → `{ status, outcome?, rejection? }` |
+| `POST` | `/weapon-observations` | Report a possible weapon + its holder for server-side evaluation → `{ status, outcome?, rejection? }` (see [Possible-weapon enforcement](#possible-weapon-enforcement)) |
 | `POST` | `/alerts/read-all` | Mark every unread alert read → `{ modified }` |
 | `PATCH` | `/alerts/:id/status` | Body `{ status }` — update review status |
 | `PATCH` | `/alerts/:id/read` | Body `{ read }` (default `true`) |
@@ -861,3 +916,16 @@ boot (`vision.migration.ts`): `acknowledged: true` → `status: acknowledged`
 from the alert's type, `occurrences: 1`, and `lastOccurredAt` set to the
 original `createdAt`. It only matches documents with no `status`, so it is
 idempotent and no manual database reset is needed.
+
+## License
+
+This repository is licensed under the **GNU Affero General Public License
+v3.0** — see [LICENSE](LICENSE). AGPL was chosen deliberately: the weapon
+detector is trained with [Ultralytics YOLO11](https://github.com/ultralytics/ultralytics)
+(AGPL-3.0), and this app serves the trained model to every browser, which is
+distribution — open-sourcing the whole codebase under AGPL-3.0 is what makes
+that use compliant.
+
+The trained weights (`frontend-spectra/public/models/*.onnx`) are deploy
+assets, gitignored, never committed. Training data licensing is tracked per
+source in the training workspace, and no unlicensed model or dataset is used.

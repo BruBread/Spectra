@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as visionController from './vision.controller.js';
 import * as observationsController from './observations.controller.js';
+import * as weaponObservationsController from './weaponObservations.controller.js';
 import { requireAuth, requireRole } from '../auth/auth.middleware.js';
 
 export const visionRouter = Router();
@@ -26,6 +27,13 @@ visionRouter.post('/alerts', requireAuth, visionController.createAlert);
 // `restricted_area` alert can only be born from this path, never from
 // POST /alerts, so policy can't be bypassed by a client fabricating one.
 visionRouter.post('/observations', requireAuth, observationsController.postObservation);
+
+// Weapon observations. Same contract as restricted-area: the browser runs the
+// weapon model and posts CV facts (the box, its holder, tags on the holder);
+// the server resolves identity, applies the global possible_weapon rule
+// (the security-guard exemption suppresses + audits; everyone else alerts), and
+// a `weapon` alert can only be born here, never from POST /alerts.
+visionRouter.post('/weapon-observations', requireAuth, weaponObservationsController.postWeaponObservation);
 visionRouter.post('/alerts/read-all', requireAuth, visionController.markAllAlertsRead);
 visionRouter.patch('/alerts/:id/status', requireAuth, visionController.updateAlertStatus);
 visionRouter.patch('/alerts/:id/read', requireAuth, visionController.markAlertRead);

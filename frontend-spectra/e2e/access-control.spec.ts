@@ -72,14 +72,19 @@ test.describe('access control: navigation and roles', () => {
     await expect(page.getByRole('button', { name: 'Allow', exact: true })).toHaveCount(0);
   });
 
-  test('shows the whole catalog, with possible_weapon read-only', async ({ page }) => {
+  test('shows the whole catalog, with possible_weapon configurable and unattended_object read-only', async ({ page }) => {
     await loginViaUi(page);
     await goTo(page, 'roles');
 
     const guard = roleCard(page, 'security_guard');
     // Rendered from the code-defined catalog, not invented by the UI.
     await expect(guard.locator('[data-action="restricted_area"]')).toBeVisible();
-    await expect(guard.locator('[data-action="possible_weapon"]')).toContainText('Not active yet');
+    // possible_weapon is global + configurable now: a single Allow/Restrict
+    // control (the security-guard exemption), no "not active" / "not enforced" badges.
+    const weapon = guard.locator('[data-action="possible_weapon"]');
+    await expect(weapon.getByRole('group', { name: /rule/i })).toBeVisible();
+    await expect(weapon).not.toContainText('Not active yet');
+    await expect(weapon).not.toContainText('Not enforced yet');
     await expect(guard.locator('[data-action="unattended_object"]')).toContainText(
       /ownership cannot be established/i,
     );
