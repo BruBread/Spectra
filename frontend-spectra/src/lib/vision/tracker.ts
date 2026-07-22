@@ -25,7 +25,7 @@ function distance([ax, ay]: [number, number], [bx, by]: [number, number]): numbe
 /**
  * Greedy nearest-centroid tracker: assigns a persistent id to bounding-box
  * detections across frames so duration-based detectors (e.g. "has this bag
- * been stationary for 30s") have something stable to key off of. COCO-SSD
+ * been stationary for 30s") have something stable to key off of. The object model
  * has no built-in tracking, unlike MoveNet's multi-pose tracker, so this
  * exists specifically for object-class detections (bags, etc).
  */

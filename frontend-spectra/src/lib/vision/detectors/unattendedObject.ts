@@ -4,7 +4,7 @@ import { TrackHistory } from '../history';
 import { isInsideZone, type DetectionAdapter, type DetectionCandidate, type DetectorFrameInput } from './types';
 import type { DetectionTypeConfig } from '../types';
 
-// Valuables COCO-SSD already detects out of the box (no custom training).
+// Valuables the stock YOLO11 object model detects (COCO classes, no custom training).
 // wallet / cards / wristwatch are NOT COCO classes — those need a trained model.
 const VALUABLE_CLASSES = new Set(['backpack', 'handbag', 'suitcase', 'cell phone', 'laptop', 'umbrella']);
 const STATIONARY_WINDOW_MS = 4000;
@@ -13,8 +13,8 @@ const STATIONARY_PX_THRESHOLD = 30;
 const PROXIMITY_RADIUS_FRACTION = 0.18;
 
 /**
- * Real detections (COCO-SSD), real tracking, real duration/proximity logic
- * — "unattended" here specifically means "no COCO-SSD person detection
+ * Real detections (YOLO11 object model), real tracking, real duration/proximity logic
+ * — "unattended" here specifically means "no detected person
  * within the proximity radius," not identity-linked ownership.
  */
 export function createUnattendedObjectDetector(): DetectionAdapter {

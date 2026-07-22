@@ -15,7 +15,7 @@ import * as ort from 'onnxruntime-web';
  *
  * The label is always "possible_weapon", never a confirmed weapon. False-alarm
  * suppression (phones/remotes) is not done here — it lives in the weapon detector
- * adapter, which vetoes look-alikes using the COCO-SSD object boxes.
+ * adapter, which vetoes look-alikes using the object-model (YOLO11) boxes.
  */
 
 const MODEL_URL = '/models/possible_weapon_yolo11.onnx';

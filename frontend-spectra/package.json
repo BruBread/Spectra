@@ -11,9 +11,6 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@tensorflow-models/coco-ssd": "^2.2.3",
-    "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-backend-webgl": "^4.22.0",
     "hls.js": "^1.6.16",
     "js-aruco2": "^2.0.0",
     "lucide-react": "^1.24.0",

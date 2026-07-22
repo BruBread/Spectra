@@ -6,7 +6,7 @@ import type { DetectionTypeConfig } from '../types';
 
 /**
  * Everyday objects the weapon model most often mistakes for a firearm. If the
- * COCO-SSD object model confidently reports one of these overlapping a weapon
+ * YOLO11 object model confidently reports one of these overlapping a weapon
  * box, we suppress the weapon — the object model is the expert on these classes.
  * The first row is the exact veto proven in the Phase-0 harness; the second row
  * adds the remaining gun-shaped COCO classes. Wallets/cameras/caps/watches/
@@ -78,7 +78,7 @@ function containment(a: Box, b: Box): number {
 
 /**
  * Turns YOLO11 weapon boxes into alerts. Two real models cooperate: YOLO11
- * proposes "possible_weapon", COCO-SSD vetoes common look-alikes and supplies
+ * proposes "possible_weapon", the object model vetoes common look-alikes and supplies
  * the person boxes a candidate must be held by. A track then needs
  * MIN_CONFIRMATIONS real detections inside CONFIRM_WINDOW_MS, must hold
  * continuously for durationThresholdSeconds, and repeat alerts respect the
